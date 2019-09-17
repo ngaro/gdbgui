@@ -3,131 +3,79 @@
 import React from "react";
 
 import GdbApi from "./GdbApi.jsx";
-import constants from "./constants.js";
+import { Terminal } from "xterm";
+import { FitAddon } from "xterm-addon-fit";
+import "../../../node_modules/xterm/css/xterm.css"
 
-const pre_escape = string => {
-  return string
-    .replace(/\\n/g, "\n")
-    .replace(/\\"/g, '"')
-    .replace(/\\t/g, "  ");
-};
-
-export function process_pty_response(response) {
-  console.log("pty response:", response);
-}
-
-class GdbConsole extends React.Component {
-  componentDidUpdate() {
-    this.scroll_to_bottom();
-  }
-  scroll_to_bottom() {
-    this.console_end.scrollIntoView({
-      block: "end",
-      inline: "nearest",
-      behavior: "smooth"
+export default class GdbConsole extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      rows: 10,
+      cols: 20
+    };
+    this.term = new Terminal({
+      cursorBlink: true,
+      macOptionIsMeta: true,
+      scrollback: 1000
     });
-  }
-  backtrace_button_clicked = event => {
-    event.preventDefault();
-    GdbApi.backtrace();
-  };
 
-  render_entries(console_entries) {
-    return console_entries.map((entry, index) => {
-      switch (entry.type) {
-        case constants.console_entry_type.STD_OUT: {
-          let escaped_value = pre_escape(entry.value);
-          return (
-            <p key={index} className="otpt">
-              {escaped_value}
-            </p>
-          );
-        }
-        case constants.console_entry_type.STD_ERR: {
-          let escaped_value = pre_escape(entry.value);
-          return (
-            <p key={index} className="otpt stderr">
-              {escaped_value}
-            </p>
-          );
-        }
-        case constants.console_entry_type.GDBGUI_OUTPUT: {
-          let escaped_value = pre_escape(entry.value);
-          return (
-            <p key={index} className="gdbguiConsoleOutput" title="gdbgui output">
-              {escaped_value}
-            </p>
-          );
-        }
-        case constants.console_entry_type.GDBGUI_OUTPUT_RAW: {
-          return (
-            <p key={index} className="gdbguiConsoleOutput" title="gdbgui output">
-              {entry.value}
-            </p>
-          );
-        }
-        case constants.console_entry_type.SENT_COMMAND: {
-          let escaped_value = pre_escape(entry.value);
-          return (
-            <p
-              key={index}
-              className="otpt sent_command pointer"
-              onClick={() => this.props.on_sent_command_clicked(entry.value)}
-            >
-              {escaped_value}
-            </p>
-          );
-        }
-        case constants.console_entry_type.AUTOCOMPLETE_OPTION: {
-          let escaped_value = pre_escape(entry.value);
-          return (
-            <p
-              key={index}
-              className="otpt autocmplt pointer"
-              onClick={() => this.props.on_autocomplete_text_clicked(entry.value)}
-            >
-              <span>{escaped_value}</span>
-              <span> </span>
-              <span
-                className="label label-primary"
-                onClick={() => GdbApi.run_gdb_command(`help ${entry.value}`)}
-              >
-                help
-              </span>
-            </p>
-          );
-        }
-        case constants.console_entry_type.BACKTRACE_LINK: {
-          let escaped_value = pre_escape(entry.value);
-          return (
-            <div key={index}>
-              <a
-                onClick={this.backtrace_button_clicked}
-                style={{ fontFamily: "arial", marginLeft: "10px" }}
-                className="btn btn-success backtrace btn-xs"
-              >
-                {escaped_value}
-              </a>
-            </div>
-          );
-        }
-      }
-    });
+    this.terminalEl = React.createRef();
+    this.term.resize(this.state.cols, this.state.rows);
   }
   render() {
-    const { console_entries } = this.props;
+    return <div id="xtermconsole" ref={this.terminalEl} />;
+  }
+  componentDidMount() {
+    const term = this.term;
 
-    return (
-      <div id="console" ref={el => (this.console = el)}>
-        {this.render_entries(console_entries)}
-        <div
-          ref={el => {
-            this.console_end = el;
-          }}
-        />
-      </div>
-    );
+    term.open(document.getElementById("xtermconsole"));
+
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    fitAddon.fit();
+
+    term.writeln(`Welcome to gdbgui!`);
+    term.writeln("https://github.com/cs01/gdbgui");
+    term.writeln("Connecting to gdb...");
+
+    GdbApi.socket.on("pty_response", function(pty_response) {
+      console.log(pty_response);
+      console.log(term);
+      // term.write(pty_response);
+    });
+
+    term.onKey((key, ev) => {
+      console.log(key);
+      term.write(key)
+      // socket.send(key);
+    });
+    // socket.addEventListener("open", event => {
+    //   this.setState({ status: "connected" });
+    //   term.writeln("Connection established");
+    // });
+
+    // socket.addEventListener("close", event => {
+    //   this.setState({ status: "disconnected" });
+    //   term.writeln("Connection ended");
+    //   this.setState({ num_clients: 0 });
+    // });
+
+    // socket.addEventListener("message", event => {
+    //   const data = JSON.parse(event.data);
+    //   if (data.event === "new_output") {
+    //     term.write(atob(data.payload));
+    //   } else if (data.event === "resize") {
+    //     clearTimeout(this.resizeTimeout);
+    //     this.resizeTimeout = setTimeout(() => {
+    //       this.term.resize(data.payload.cols, data.payload.rows);
+    //       this.setState({ rows: data.payload.rows, cols: data.payload.cols });
+    //     }, 500);
+    //   } else if (data.event === "num_clients") {
+    //     this.setState({ num_clients: data.payload });
+    //   } else {
+    //     console.error("unknown event type", data);
+    //   }
+    // });
   }
 }
-
-export default GdbConsole;

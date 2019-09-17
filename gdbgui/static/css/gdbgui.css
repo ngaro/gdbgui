@@ -260,21 +260,6 @@ td.line_num{
     height: 100%;
     position: relative;
 }
-#console{
-    background-color: #292929;
-    color: #d6d6d6 !important;
-    font-family: Menlo,Monaco,Consolas,"Courier New",monospace !important;
-    width: 100%;
-    overflow: auto;
-    font-size: 0.9em;
-    border-bottom: 0;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 30px;
-}
 #filesystem ul,
 #filesystem li
 {

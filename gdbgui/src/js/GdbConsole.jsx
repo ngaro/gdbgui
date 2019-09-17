@@ -12,6 +12,10 @@ const pre_escape = string => {
     .replace(/\\t/g, "  ");
 };
 
+export function process_pty_response(response) {
+  console.log("pty response:", response);
+}
+
 class GdbConsole extends React.Component {
   componentDidUpdate() {
     this.scroll_to_bottom();

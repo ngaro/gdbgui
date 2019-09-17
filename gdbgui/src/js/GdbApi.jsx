@@ -9,6 +9,7 @@ import Actions from "./Actions.js";
 import GdbVariable from "./GdbVariable.jsx";
 import constants from "./constants.js";
 import process_gdb_response from "./process_gdb_response.js";
+import {process_pty_response} from "./GdbConsole.jsx";
 import React from "react";
 void React; // needed when using JSX, but not marked as used
 
@@ -46,6 +47,10 @@ const GdbApi = {
       clearTimeout(GdbApi._waiting_for_response_timeout);
       store.set("waiting_for_response", false);
       process_gdb_response(response_array);
+    });
+
+    GdbApi.socket.on("pty_response", function(pty_response) {
+      process_pty_response(pty_response);
     });
 
     GdbApi.socket.on("error_running_gdb_command", function(data) {

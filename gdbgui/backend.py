@@ -171,7 +171,7 @@ def add_csrf_token_to_session():
         session["csrf_token"] = binascii.hexlify(os.urandom(20)).decode("utf-8")
 
 
-socketio = SocketIO()
+socketio = SocketIO(manage_session=False)
 _state = StateManager(app.config)
 
 
@@ -251,7 +251,7 @@ def setup_backend(
                 port=int(port),
                 host=host,
                 extra_files=get_extra_files(),
-                **kwargs
+                **kwargs,
             )
         except KeyboardInterrupt:
             # Process was interrupted by ctrl+c on keyboard, show message
@@ -336,7 +336,7 @@ def client_connected():
     # Make sure there is a reader thread reading. One thread reads all instances.
     if _state.gdb_reader_thread is None:
         _state.gdb_reader_thread = socketio.start_background_task(
-            target=read_and_forward_gdb_output
+            target=read_and_forward_gdb_and_pty_output
         )
         logger.info("Created background thread to read gdb responses")
 
@@ -413,7 +413,7 @@ def test_disconnect():
     print("Client websocket disconnected", request.sid)
 
 
-def read_and_forward_gdb_output():
+def read_and_forward_gdb_and_pty_output():
     """A task that runs on a different thread, and emits websocket messages
     of gdb responses"""
 
@@ -456,6 +456,24 @@ def read_and_forward_gdb_output():
 
         for controller in controllers_to_remove:
             _state.remove_gdb_controller(controller)
+
+        check_and_forward_pty_output()
+
+
+def check_and_forward_pty_output():
+    pty_items = _state.pty_to_client_ids.items()
+    for pty, client_ids in pty_items:
+        try:
+            response = pty.read()
+            if response is None:
+                continue
+            for client_id in client_ids:
+                logger.info(f"emiting message to websocket client id {client_id}")
+                socketio.emit(
+                    "pty_response", response, namespace="/gdb_listener", room=client_id
+                )
+        except Exception as e:
+            logger.error(e)
 
 
 def server_error(obj):

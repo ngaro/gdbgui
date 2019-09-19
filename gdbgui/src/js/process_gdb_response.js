@@ -70,6 +70,7 @@ const process_gdb_response = function(response_array) {
   }
 
   for (let r of response_array) {
+    console.log(r);
     // gdb mi output
     GdbMiOutput.add_mi_output(r);
 

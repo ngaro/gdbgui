@@ -3,9 +3,11 @@
 import React from "react";
 
 import GdbApi from "./GdbApi.jsx";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
-import "../../../node_modules/xterm/css/xterm.css"
+// import { Terminal } from "xterm";
+// import { FitAddon } from "xterm-addon-fit";
+// import { WebglAddon } from "xterm-addon-webgl";
+// import { WebLinksAddon } from "xterm-addon-web-links";
+// import "../../../node_modules/xterm/css/xterm.css";
 
 export default class GdbConsole extends React.Component {
   constructor(props) {
@@ -17,49 +19,56 @@ export default class GdbConsole extends React.Component {
     this.term = new Terminal({
       cursorBlink: true,
       macOptionIsMeta: true,
-      scrollback: 1000
+      scrollback: 10
     });
 
-    this.terminalEl = React.createRef();
-    this.term.resize(this.state.cols, this.state.rows);
+    this.ref = React.createRef();
+    // this.term.resize(this.state.cols, this.state.rows);
   }
   render() {
-    return <div id="xtermconsole" ref={this.terminalEl} />;
+    return <div id="xtermconsole" ref={this.ref} />;
   }
   componentDidMount() {
     const term = this.term;
+    Terminal.applyAddon(fit);
+    Terminal.applyAddon(fullscreen);
+    const term = new Terminal({
+      cursorBlink: true,
+      macOptionIsMeta: true,
+      scrollback: true
+    });
 
-    term.open(document.getElementById("xtermconsole"));
-
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    fitAddon.fit();
-
-    term.writeln(`Welcome to gdbgui!`);
-    term.writeln("https://github.com/cs01/gdbgui");
-    term.writeln("Connecting to gdb...");
+    term.open(this.ref.current);
+    term.fit();
+    term.writeln("Welcome to gdbgui — https://github.com/cs01/gdbgui");
+    term.writeln("Type 'shell' to enter your shell.");
+    term.writeln("Entering gdb");
+    term.writeln("");
 
     GdbApi.socket.on("pty_response", function(pty_response) {
-      console.log(pty_response);
-      console.log(term);
-      // term.write(pty_response);
+      term.write(pty_response);
     });
 
-    term.onKey((key, ev) => {
-      console.log(key);
-      term.write(key)
-      // socket.send(key);
+    term.on("key", (key, ev) => {
+      GdbApi.socket.emit("write_to_pty", { data: key });
     });
-    // socket.addEventListener("open", event => {
-    //   this.setState({ status: "connected" });
-    //   term.writeln("Connection established");
-    // });
 
-    // socket.addEventListener("close", event => {
-    //   this.setState({ status: "disconnected" });
-    //   term.writeln("Connection ended");
-    //   this.setState({ num_clients: 0 });
-    // });
+    function fitToscreen() {
+      term.fit();
+      GdbApi.socket.emit("resize", { cols: term.cols, rows: term.rows });
+    }
+
+    function debounce(func, wait_ms) {
+      let timeout;
+      return function(...args) {
+        const context = this;
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(context, args), wait_ms);
+      };
+    }
+
+    const wait_ms = 50;
+    window.onresize = debounce(fitToscreen, wait_ms);
 
     // socket.addEventListener("message", event => {
     //   const data = JSON.parse(event.data);

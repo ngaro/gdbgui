@@ -3,7 +3,7 @@ import traceback
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 import copy
-from pygdbmi.gdbcontroller import GdbController  # type: ignore
+from pygdbmi.gdbfiledescriptorcontroller import GdbFileDescriptorController
 
 from .pty import Pty
 
@@ -13,7 +13,9 @@ GDB_MI_FLAG = ["--interpreter=mi2"]
 
 class StateManager(object):
     def __init__(self, config: Dict[str, Any]):
-        self.controller_to_client_ids: Dict[GdbController, List[str]] = defaultdict(
+        self.controller_to_client_ids: Dict[
+            GdbFileDescriptorController, List[str]
+        ] = defaultdict(
             list
         )  # key is controller, val is list of client ids
 
@@ -44,10 +46,9 @@ class StateManager(object):
 
             if controller:
                 self.controller_to_client_ids[controller].append(client_id)
-                message = (
-                    "gdbgui is using existing subprocess with pid %s, "
-                    "originally opened with command %s"
-                ) % (str(desired_gdbpid), controller.get_subprocess_cmd())
+                message = ("gdbgui is using existing subprocess with pid %s") % (
+                    str(desired_gdbpid)
+                )
                 using_existing = True
                 pid = desired_gdbpid
             else:
@@ -62,19 +63,21 @@ class StateManager(object):
 
             gdb_args = self.get_gdb_args()
 
-            controller = GdbController(
-                gdb_path=self.config["gdb_path"],
-                gdb_args=gdb_args,
-                rr=self.config["rr"],
-            )
-            self.controller_to_client_ids[controller].append(client_id)
-
             pty_command = (
                 [self.config["gdb_path"]]
                 + deepcopy(self.config["initial_binary_and_args"])
                 + deepcopy(self.config["gdb_args"])
+                + ["-x", "/tmp/gdbguitty1.txt"]
+                + ["-ex", "new-ui mi2 /dev/pts/5"]
             )
-            pty = Pty(pty_command)
+
+            pty_mi = Pty(["cat"], "1")
+            controller = GdbFileDescriptorController(
+                pty_mi.fd, pty_mi.fd, pty_mi.child_pid
+            )
+            self.controller_to_client_ids[controller].append(client_id)
+
+            pty = Pty(pty_command, "2")
             self.pty_to_client_ids[pty].append(client_id)
 
             pid = self.get_pid_from_controller(controller)
@@ -82,10 +85,7 @@ class StateManager(object):
                 error = True
                 message = "Developer error"
             else:
-                message += "gdbgui spawned subprocess with pid %s from command %s." % (
-                    str(pid),
-                    controller.get_subprocess_cmd(),
-                )
+                message += "gdbgui spawned subprocess with pid %s." % (str(pid),)
 
         return {
             "pid": pid,
@@ -103,9 +103,11 @@ class StateManager(object):
             orphaned_client_ids = []
         return orphaned_client_ids
 
-    def remove_gdb_controller(self, controller: GdbController) -> List[str]:
+    def remove_gdb_controller(
+        self, controller: GdbFileDescriptorController
+    ) -> List[str]:
         try:
-            controller.exit()
+            controller.terminate()
         except Exception:
             logger.error(traceback.format_exc())
         orphaned_client_ids = self.controller_to_client_ids.pop(controller, [])
@@ -113,18 +115,24 @@ class StateManager(object):
 
     def get_client_ids_from_gdb_pid(self, pid: int) -> List[str]:
         controller = self.get_controller_from_pid(pid)
+        if controller:
+            return self.controller_to_client_ids.get(controller, [])
+        return []
+
+    def get_client_ids_from_controller(self, controller: GdbFileDescriptorController):
         return self.controller_to_client_ids.get(controller, [])
 
-    def get_client_ids_from_controller(self, controller: GdbController):
-        return self.controller_to_client_ids.get(controller, [])
-
-    def get_pid_from_controller(self, controller: GdbController) -> Optional[int]:
-        if controller and controller.gdb_process:
-            return controller.gdb_process.pid
+    def get_pid_from_controller(
+        self, controller: GdbFileDescriptorController
+    ) -> Optional[int]:
+        if controller and controller.pid:
+            return controller.pid
 
         return None
 
-    def get_controller_from_pid(self, pid: int) -> Optional[GdbController]:
+    def get_controller_from_pid(
+        self, pid: int
+    ) -> Optional[GdbFileDescriptorController]:
         for controller in self.controller_to_client_ids:
             this_pid = self.get_pid_from_controller(controller)
             if this_pid == pid:
@@ -132,17 +140,26 @@ class StateManager(object):
 
         return None
 
-    def get_controller_from_client_id(self, client_id: str) -> Optional[GdbController]:
+    def get_controller_from_client_id(
+        self, client_id: str
+    ) -> Optional[GdbFileDescriptorController]:
         for controller, client_ids in self.controller_to_client_ids.items():
             if client_id in client_ids:
                 return controller
 
         return None
 
+    def get_pty_from_client_id(self, client_id: str) -> Optional[Pty]:
+        for pty, client_ids in self.pty_to_client_ids.items():
+            if client_id in client_ids:
+                return pty
+
+        return None
+
     def exit_all_gdb_processes(self):
         logger.info("exiting all subprocesses")
         for controller in self.controller_to_client_ids:
-            controller.exit()
+            controller.terminate()
             self.controller_to_client_ids.pop(controller)
 
     def get_dashboard_data(self):

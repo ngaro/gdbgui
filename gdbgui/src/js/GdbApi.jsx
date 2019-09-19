@@ -264,12 +264,12 @@ const GdbApi = {
     if (_.isString(cmds)) {
       cmds = [cmds];
     }
-
-    // add the send command to the console to show commands that are
-    // automatically run by gdb
-    if (store.get("show_all_sent_commands_in_console")) {
-      Actions.add_console_entries(cmds, constants.console_entry_type.SENT_COMMAND);
-    }
+    // cmds = cmds.map(c => `interpreter-exec mi2 "${c}"\n`);
+    // // add the send command to the console to show commands that are
+    // // automatically run by gdb
+    // if (store.get("show_all_sent_commands_in_console")) {
+    //   Actions.add_console_entries(cmds, constants.console_entry_type.SENT_COMMAND);
+    // }
 
     GdbApi.waiting_for_response();
     GdbApi.socket.emit("run_gdb_command", { cmd: cmds });

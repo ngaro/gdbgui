@@ -106,7 +106,6 @@ app.config["TEMPLATES_AUTO_RELOAD"] = True
 app.config["LLDB"] = False  # assume false, okay to change later
 app.config["project_home"] = None
 app.config["remap_sources"] = {}
-app.config["rr"] = False
 app.secret_key = binascii.hexlify(os.urandom(24)).decode("utf-8")
 
 
@@ -341,20 +340,34 @@ def client_connected():
         logger.info("Created background thread to read gdb responses")
 
 
+
+
+@socketio.on("write_to_pty", namespace="/gdb_listener")
+def write_to_pty(message):
+    """Write a character to the user facing pty"""
+    pty = _state.get_pty_from_client_id(request.sid)
+    if pty is not None:
+        try:
+            data = message["data"]
+            pty.write(data)
+
+        except Exception:
+            err = traceback.format_exc()
+            logger.error(err)
+            emit("error_running_gdb_command", {"message": err})
+    else:
+        emit("error_running_gdb_command", {"message": "gdb is not running"})
+
+
 @socketio.on("run_gdb_command", namespace="/gdb_listener")
 def run_gdb_command(message):
-    """
-    Endpoint for a websocket route.
-    Runs a gdb command.
-    Responds only if an error occurs when trying to write the command to
-    gdb
-    """
+    """Write mi2 commands to the gdb mi2 pty"""
     controller = _state.get_controller_from_client_id(request.sid)
     if controller is not None:
         try:
             # the command (string) or commands (list) to run
             cmd = message["cmd"]
-            controller.write(cmd, read_response=False)
+            controller.write(cmd)
 
         except Exception:
             err = traceback.format_exc()
@@ -473,7 +486,7 @@ def check_and_forward_pty_output():
                     "pty_response", response, namespace="/gdb_listener", room=client_id
                 )
         except Exception as e:
-            logger.error(e)
+            logger.error(e, exc_info=True)
 
 
 def server_error(obj):
@@ -557,7 +570,6 @@ def gdbgui():
         "initial_binary_and_args": app.config["initial_binary_and_args"],
         "project_home": app.config["project_home"],
         "remap_sources": app.config["remap_sources"],
-        "rr": app.config["rr"],
         "themes": THEMES,
         "signals": SIGNAL_NAME_TO_OBJ,
         "using_windows": USING_WINDOWS,
@@ -805,15 +817,6 @@ def get_parser():
         ),
         default="",
     )
-    gdb_group.add_argument(
-        "--rr",
-        action="store_true",
-        help=(
-            "Use `rr replay` instead of gdb. Replays last recording by default. "
-            "Replay arbitrary recording by passing recorded directory as an argument. "
-            "i.e. gdbgui /recorded/dir --rr. See http://rr-project.org/."
-        ),
-    )
     network.add_argument(
         "-p",
         "--port",
@@ -940,7 +943,6 @@ def main():
 
     app.config["initial_binary_and_args"] = cmd
     app.config["gdb_args"] = shlex.split(args.gdb_args)
-    app.config["rr"] = args.rr
     app.config["gdb_path"] = args.gdb
     app.config["gdbgui_auth_user_credentials"] = get_gdbgui_auth_user_credentials(
         args.auth_file, args.user, args.password

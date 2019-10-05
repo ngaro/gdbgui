@@ -63,29 +63,26 @@ class StateManager(object):
 
             gdb_args = self.get_gdb_args()
 
+            pty_mi = Pty([], fork=False)
+            controller = GdbFileDescriptorController(pty_mi.stdin, pty_mi.stdout)
+            self.controller_to_client_ids[controller].append(client_id)
+
             pty_command = (
                 [self.config["gdb_path"]]
                 + deepcopy(self.config["initial_binary_and_args"])
                 + deepcopy(self.config["gdb_args"])
-                + ["-x", "/tmp/gdbguitty1.txt"]
-                + ["-ex", "new-ui mi2 /dev/pts/5"]
+                + ["-ex", f"new-ui mi2 {pty_mi.name}"]
             )
 
-            pty_mi = Pty(["cat"], "1")
-            controller = GdbFileDescriptorController(
-                pty_mi.fd, pty_mi.fd, pty_mi.child_pid
-            )
-            self.controller_to_client_ids[controller].append(client_id)
-
-            pty = Pty(pty_command, "2")
+            pty = Pty(pty_command, fork=True)
             self.pty_to_client_ids[pty].append(client_id)
 
-            pid = self.get_pid_from_controller(controller)
-            if pid is None:
-                error = True
-                message = "Developer error"
-            else:
-                message += "gdbgui spawned subprocess with pid %s." % (str(pid),)
+            # pid = self.get_pid_from_controller(controller)
+            # if pid is None:
+            #     error = True
+            #     message = "Developer error"
+            # else:
+            #     message += "gdbgui spawned subprocess with pid %s." % (str(pid),)
 
         return {
             "pid": pid,
@@ -122,23 +119,23 @@ class StateManager(object):
     def get_client_ids_from_controller(self, controller: GdbFileDescriptorController):
         return self.controller_to_client_ids.get(controller, [])
 
-    def get_pid_from_controller(
-        self, controller: GdbFileDescriptorController
-    ) -> Optional[int]:
-        if controller and controller.pid:
-            return controller.pid
+    # def get_pid_from_controller(
+    #     self, controller: GdbFileDescriptorController
+    # ) -> Optional[int]:
+    #     if controller and controller.pid:
+    #         return controller.pid
 
-        return None
+    #     return None
 
-    def get_controller_from_pid(
-        self, pid: int
-    ) -> Optional[GdbFileDescriptorController]:
-        for controller in self.controller_to_client_ids:
-            this_pid = self.get_pid_from_controller(controller)
-            if this_pid == pid:
-                return controller
+    # def get_controller_from_pid(
+    #     self, pid: int
+    # ) -> Optional[GdbFileDescriptorController]:
+    #     for controller in self.controller_to_client_ids:
+    #         this_pid = self.get_pid_from_controller(controller)
+    #         if this_pid == pid:
+    #             return controller
 
-        return None
+    #     return None
 
     def get_controller_from_client_id(
         self, client_id: str
@@ -165,11 +162,11 @@ class StateManager(object):
     def get_dashboard_data(self):
         data = {}
         for controller, client_ids in self.controller_to_client_ids.items():
-            if controller.gdb_process:
-                pid = str(controller.gdb_process.pid)
-            else:
-                pid = "process no longer exists"
-            data[pid] = {
+            # if controller.gdb_process:
+            #     pid = str(controller.gdb_process.pid)
+            # else:
+            #     pid = "process no longer exists"
+            data[controller] = {
                 "cmd": " ".join(controller.cmd),
                 "abs_gdb_path": controller.abs_gdb_path,
                 "number_of_connected_browser_tabs": len(client_ids),

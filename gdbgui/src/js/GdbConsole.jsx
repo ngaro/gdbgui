@@ -42,7 +42,6 @@ export default class GdbConsole extends React.Component {
     term.fit();
     term.writeln("Welcome to gdbgui — https://github.com/cs01/gdbgui");
     term.writeln("Type 'shell' to enter your shell.");
-    term.writeln("Entering gdb");
     term.writeln("");
 
     GdbApi.socket.on("pty_response", function(pty_response) {

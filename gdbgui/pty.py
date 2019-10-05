@@ -4,60 +4,61 @@ import select
 import struct
 import subprocess
 import termios
+import tty
 from typing import List, Optional
 import os
+import logging
 
 
 class Pty:
     max_read_bytes = 1024 * 20
 
-    def __init__(self, command: List[str], i: str):
-        self.command = command
-        # create child process attached to a pty we can read from and write to
-        (child_pid, fd) = pty.fork()
-        if child_pid == 0:
-            # this is the child process fork.
-            # anything printed here will show up in the pty, including the output
-            # of this subprocess
-            print("starting subprocess")
-            subprocess.run(
-                f"echo new-ui mi2 `tty` > /tmp/gdbguitty{i}.txt",
-                shell=True,
-                env={"PS1": ""},
-            )
-            print("cat complete, now running command")
-            subprocess.run(command, env={"PS1": ""})
-            print("finshed...")
-            # os.execvpe(command[0], command[0:], {"PS1": ""})
+    def __init__(self, command: List[str], fork=True):
+        if fork:
+            (child_pid, child_pty_fd) = pty.fork()
+            if child_pid == 0:
+                # this is the child process pty, where we run a command
+                subprocess.run(command)
+            else:
+                # this is the parent process fork, where we can programatically
+                # interact with the child pty via its file descriptor
+                self.stdout = child_pty_fd
+                self.stdin = child_pty_fd
+                self.name = os.ttyname(child_pty_fd)
         else:
-            # this is the parent process fork.
-            # store child fd and pid
-            self.fd: Optional[int] = fd
-            self.child_pid = child_pid
+            self.command = command
+            # create a new pty (but don't run anything)
+            (master, slave) = pty.openpty()
+            tty.setraw(master)
+            tty.setraw(slave)
+            self.stdin = master
+            self.stdout = master
+            self.name = os.ttyname(slave)
 
     def set_winsize(self, rows: int, cols: int):
         xpix = 0
         ypix = 0
         winsize = struct.pack("HHHH", rows, cols, xpix, ypix)
-        if self.fd is None:
+        if self.stdin is None:
             raise RuntimeError("fd not assigned")
-        fcntl.ioctl(self.fd, termios.TIOCSWINSZ, winsize)
+        fcntl.ioctl(self.stdin, termios.TIOCSWINSZ, winsize)
 
     def read(self) -> Optional[str]:
-        if self.fd is None:
+        if self.stdout is None:
             return "done"
         timeout_sec = 0
-        (data_ready, _, _) = select.select([self.fd], [], [], timeout_sec)
+        (data_ready, _, _) = select.select([self.stdout], [], [], timeout_sec)
         if data_ready:
             try:
-                response = os.read(self.fd, self.max_read_bytes).decode()
+                response = os.read(self.stdout, self.max_read_bytes).decode()
             except OSError:
-                self.fd = None
-            if response == "":
-                self.fd = None
+                logging.error(f"Failed to read from pty {self.name}", exc_info=True)
+            #     self.stdout = None
+            # if response == "":
+            #     self.stdout = None
             return response
         return None
 
     def write(self, data: str):
-        if self.fd:
-            os.write(self.fd, data.encode())
+        if self.stdin:
+            os.write(self.stdin, data.encode())

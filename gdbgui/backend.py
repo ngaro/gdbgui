@@ -70,6 +70,7 @@ DEFAULT_GDB_EXECUTABLE = "gdb"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
+logging.basicConfig(format='(%(asctime)s) %(msg)s')
 
 
 class ColorFormatter(logging.Formatter):
@@ -340,8 +341,6 @@ def client_connected():
         logger.info("Created background thread to read gdb responses")
 
 
-
-
 @socketio.on("write_to_pty", namespace="/gdb_listener")
 def write_to_pty(message):
     """Write a character to the user facing pty"""
@@ -367,7 +366,7 @@ def run_gdb_command(message):
         try:
             # the command (string) or commands (list) to run
             cmd = message["cmd"]
-            controller.write(cmd)
+            controller.write(cmd, read_response=False)
 
         except Exception:
             err = traceback.format_exc()

@@ -30,6 +30,9 @@ import ToolTip from "./ToolTip.jsx";
 import TopBar from "./TopBar.jsx";
 import ToolTipTourguide from "./ToolTipTourguide.jsx";
 
+import "../../static/css/gdbgui.css"
+import "../../static/css/splitjs-gdbgui.css"
+
 const store_options = {
   immutable: false,
   debounce_ms: 10

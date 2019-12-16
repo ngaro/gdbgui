@@ -13,12 +13,13 @@ import logging
 class Pty:
     max_read_bytes = 1024 * 20
 
-    def __init__(self, command: List[str], fork=True):
-        if fork:
+    def __init__(self, command: Optional[List[str]]=None):
+        self.command = command
+        if command:
             (child_pid, child_pty_fd) = pty.fork()
             if child_pid == 0:
                 # this is the child process pty, where we run a command
-                subprocess.run(command)
+                subprocess.run(command, bufsize=0)
             else:
                 # this is the parent process fork, where we can programatically
                 # interact with the child pty via its file descriptor
@@ -26,11 +27,9 @@ class Pty:
                 self.stdin = child_pty_fd
                 self.name = os.ttyname(child_pty_fd)
         else:
-            self.command = command
             # create a new pty (but don't run anything)
             (master, slave) = pty.openpty()
-            tty.setraw(master)
-            tty.setraw(slave)
+            # leave in default "cooked" mode and do NOT switch to raw
             self.stdin = master
             self.stdout = master
             self.name = os.ttyname(slave)

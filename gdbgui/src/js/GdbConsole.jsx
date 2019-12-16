@@ -3,11 +3,11 @@
 import React from "react";
 
 import GdbApi from "./GdbApi.jsx";
-// import { Terminal } from "xterm";
-// import { FitAddon } from "xterm-addon-fit";
-// import { WebglAddon } from "xterm-addon-webgl";
-// import { WebLinksAddon } from "xterm-addon-web-links";
-// import "../../../node_modules/xterm/css/xterm.css";
+import { Terminal } from "xterm";
+import { FitAddon } from "xterm-addon-fit";
+import { WebglAddon } from "xterm-addon-webgl";
+import { WebLinksAddon } from "xterm-addon-web-links";
+import "xterm/dist/xterm.css";
 
 export default class GdbConsole extends React.Component {
   constructor(props) {
@@ -30,8 +30,8 @@ export default class GdbConsole extends React.Component {
   }
   componentDidMount() {
     const term = this.term;
-    Terminal.applyAddon(fit);
-    Terminal.applyAddon(fullscreen);
+    // Terminal.applyAddon(fit);
+    // Terminal.applyAddon(fullscreen);
     const term = new Terminal({
       cursorBlink: true,
       macOptionIsMeta: true,
@@ -39,7 +39,7 @@ export default class GdbConsole extends React.Component {
     });
 
     term.open(this.ref.current);
-    term.fit();
+    // term.fit();
     term.writeln("Welcome to gdbgui — https://github.com/cs01/gdbgui");
     term.writeln("Type 'shell' to enter your shell.");
     term.writeln("");

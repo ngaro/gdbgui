@@ -63,10 +63,16 @@ class StateManager(object):
 
             gdb_args = self.get_gdb_args()
 
-            pty_mi = Pty([], fork=False)
+            # first create a pty that accepts mi commands and responds with
+            # mi responses
+            pty_mi = Pty()
             controller = GdbFileDescriptorController(pty_mi.stdin, pty_mi.stdout)
             self.controller_to_client_ids[controller].append(client_id)
 
+            # ...then create a traditional pty that looks and acts like the normal
+            # gdb a user would interact with. The first thing we do with this pty
+            # is tell it to create a new ui so we can write to our mi pty. The mi
+            # pty is written to when clicking buttons on the webpage.
             pty_command = (
                 [self.config["gdb_path"]]
                 + deepcopy(self.config["initial_binary_and_args"])
@@ -74,15 +80,9 @@ class StateManager(object):
                 + ["-ex", f"new-ui mi2 {pty_mi.name}"]
             )
 
-            pty = Pty(pty_command, fork=True)
+            pty = Pty(pty_command)
             self.pty_to_client_ids[pty].append(client_id)
 
-            # pid = self.get_pid_from_controller(controller)
-            # if pid is None:
-            #     error = True
-            #     message = "Developer error"
-            # else:
-            #     message += "gdbgui spawned subprocess with pid %s." % (str(pid),)
 
         return {
             "pid": pid,

@@ -36,38 +36,6 @@ const process_gdb_response = function(response_array) {
     is_creating_var = response => {
       return response.token === constants.CREATE_VAR_INT;
     },
-    is_autocomplete_response = response_array => {
-      let num_responses = response_array.length;
-      if (num_responses < 2) {
-        return false;
-      }
-
-      let first_element = response_array[0],
-        last_element = response_array[num_responses - 1];
-      if (
-        first_element.type === "log" &&
-        first_element.payload &&
-        first_element.payload.startsWith("complete ") &&
-        last_element.message === "done" &&
-        last_element.stream === "stdout" &&
-        last_element.type === "result"
-      ) {
-        // don't do this unless other checks are true to avoid a potentially expensive slice (copy) of the array
-        let gdb_completion_output = response_array.slice(1, num_responses - 1);
-        return gdb_completion_output.every(
-          c => c.type === "console" && c.stream === "stdout" && c.message === null
-        );
-      } else {
-        return false;
-      }
-    };
-  // if this is an autocomplete response, we will process it here and not
-  if (is_autocomplete_response(response_array)) {
-    let gdb_completion_output = response_array.slice(1, response_array.length - 1),
-      options = gdb_completion_output.map(o => o.payload.replace(/\\n/g, ""));
-    store.set("gdb_autocomplete_options", options);
-    return;
-  }
 
   for (let r of response_array) {
     console.log(r);

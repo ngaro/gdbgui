@@ -4,6 +4,8 @@ import select
 import struct
 import subprocess
 import termios
+import signal
+import time
 import tty
 from typing import List, Optional
 import os
@@ -13,12 +15,18 @@ import logging
 class Pty:
     max_read_bytes = 1024 * 20
 
-    def __init__(self, command: Optional[List[str]]=None):
+    def __init__(self, command: Optional[List[str]] = None):
         self.command = command
         if command:
             (child_pid, child_pty_fd) = pty.fork()
             if child_pid == 0:
                 # this is the child process pty, where we run a command
+
+                def signal_no_op(signum, frame):
+                    pass
+
+                signal.signal(signal.SIGINT, signal_no_op)
+
                 subprocess.run(command, bufsize=0)
             else:
                 # this is the parent process fork, where we can programatically
@@ -27,7 +35,9 @@ class Pty:
                 self.stdin = child_pty_fd
                 self.name = os.ttyname(child_pty_fd)
         else:
-            # create a new pty (but don't run anything)
+            # create a new pty, but don't run anything. gdb will attach a new UI to this tty.
+            # When it gdb reads input on this tty, it will write output.
+            # TODO serialize and wait for commands to finish before writing the next command?
             (master, slave) = pty.openpty()
             # leave in default "cooked" mode and do NOT switch to raw
             self.stdin = master

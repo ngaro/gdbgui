@@ -3,9 +3,9 @@ import traceback
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 import copy
-from pygdbmi.gdbfiledescriptorcontroller import GdbFileDescriptorController
+from pygdbmi.gdbcontroller import GdbController
 
-from .pty import Pty
+from .ptylib import Pty
 
 logger = logging.getLogger(__name__)
 GDB_MI_FLAG = ["--interpreter=mi2"]
@@ -13,9 +13,7 @@ GDB_MI_FLAG = ["--interpreter=mi2"]
 
 class StateManager(object):
     def __init__(self, config: Dict[str, Any]):
-        self.controller_to_client_ids: Dict[
-            GdbFileDescriptorController, List[str]
-        ] = defaultdict(
+        self.controller_to_client_ids: Dict[GdbController, List[str]] = defaultdict(
             list
         )  # key is controller, val is list of client ids
 
@@ -62,27 +60,19 @@ class StateManager(object):
             logger.info("new sid", client_id)
 
             gdb_args = self.get_gdb_args()
-
-            # first create a pty that accepts mi commands and responds with
-            # mi responses
-            pty_mi = Pty()
-            controller = GdbFileDescriptorController(pty_mi.stdin, pty_mi.stdout)
+            pty_for_user = Pty()
+            pty_for_debugged_program = Pty()
+            controller = GdbController(
+                gdb_path=self.config["gdb_path"],
+                gdb_args=gdb_args,
+                # rr=self.config["rr"],
+            )
+            controller.write(f"new-ui console {pty_for_user.name}\n")
+            controller.write(f"new-ui set-inferior {pty_for_debugged_program.name}\n")
             self.controller_to_client_ids[controller].append(client_id)
 
-            # ...then create a traditional pty that looks and acts like the normal
-            # gdb a user would interact with. The first thing we do with this pty
-            # is tell it to create a new ui so we can write to our mi pty. The mi
-            # pty is written to when clicking buttons on the webpage.
-            pty_command = (
-                [self.config["gdb_path"]]
-                + deepcopy(self.config["initial_binary_and_args"])
-                + deepcopy(self.config["gdb_args"])
-                + ["-ex", f"new-ui mi2 {pty_mi.name}"]
-            )
-
-            pty = Pty(pty_command)
-            self.pty_to_client_ids[pty].append(client_id)
-
+            # pty = Pty(pty_command)
+            self.pty_to_client_ids[pty_for_user].append(client_id)
 
         return {
             "pid": pid,
@@ -100,9 +90,7 @@ class StateManager(object):
             orphaned_client_ids = []
         return orphaned_client_ids
 
-    def remove_gdb_controller(
-        self, controller: GdbFileDescriptorController
-    ) -> List[str]:
+    def remove_gdb_controller(self, controller: GdbController) -> List[str]:
         try:
             controller.terminate()
         except Exception:
@@ -116,11 +104,11 @@ class StateManager(object):
             return self.controller_to_client_ids.get(controller, [])
         return []
 
-    def get_client_ids_from_controller(self, controller: GdbFileDescriptorController):
+    def get_client_ids_from_controller(self, controller: GdbController):
         return self.controller_to_client_ids.get(controller, [])
 
     # def get_pid_from_controller(
-    #     self, controller: GdbFileDescriptorController
+    #     self, controller: GdbController
     # ) -> Optional[int]:
     #     if controller and controller.pid:
     #         return controller.pid
@@ -129,7 +117,7 @@ class StateManager(object):
 
     # def get_controller_from_pid(
     #     self, pid: int
-    # ) -> Optional[GdbFileDescriptorController]:
+    # ) -> Optional[GdbController]:
     #     for controller in self.controller_to_client_ids:
     #         this_pid = self.get_pid_from_controller(controller)
     #         if this_pid == pid:
@@ -137,9 +125,7 @@ class StateManager(object):
 
     #     return None
 
-    def get_controller_from_client_id(
-        self, client_id: str
-    ) -> Optional[GdbFileDescriptorController]:
+    def get_controller_from_client_id(self, client_id: str) -> Optional[GdbController]:
         for controller, client_ids in self.controller_to_client_ids.items():
             if client_id in client_ids:
                 return controller

@@ -70,7 +70,7 @@ DEFAULT_GDB_EXECUTABLE = "gdb"
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
-logging.basicConfig(format='(%(asctime)s) %(msg)s')
+logging.basicConfig(format="(%(asctime)s) %(msg)s")
 
 
 class ColorFormatter(logging.Formatter):
@@ -348,6 +348,7 @@ def write_to_pty(message):
     if pty is not None:
         try:
             data = message["data"]
+            print(data)
             pty.write(data)
 
         except Exception:
@@ -927,8 +928,8 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    if args.debug:
-        logger.setLevel(logging.NOTSET)
+    # if args.debug:
+    #     logger.setLevel(logging.NOTSET)
 
     if args.version:
         print(__version__)

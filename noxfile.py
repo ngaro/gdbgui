@@ -1,6 +1,7 @@
 import nox  # type: ignore
 from pathlib import Path
 from sys import platform
+import subprocess
 
 nox.options.sessions = ["tests", "lint", "docs"]
 python = ["3.6", "3.7", "3.8"]
@@ -11,19 +12,27 @@ lint_dependencies = ["black", "flake8", "mypy", "check-manifest"]
 files_to_lint = ["gdbgui", "tests"] + [str(p) for p in Path(".").glob("*.py")]
 
 
-@nox.session(reuse_venv=True, python=python)
-def tests(session):
+@nox.session(reuse_venv=True)
+def python_tests(session):
     session.install(".", "pytest", "pytest-cov")
     tests = session.posargs or ["tests"]
     session.run(
         "pytest", "--cov=gdbgui", "--cov-config", ".coveragerc", "--cov-report=", *tests
     )
+    session.notify("cover")
 
+
+@nox.session(reuse_venv=True)
+def js_tests(session):
     session.run("yarn", "install", external=True)
     session.run("yarn", "test", external=True)
     session.run("yarn", "build", external=True)
 
-    session.notify("cover")
+
+@nox.session(reuse_venv=True, python=python)
+def tests(session):
+    python_tests(session)
+    js_tests(session)
 
 
 @nox.session(reuse_venv=True)
@@ -84,13 +93,13 @@ def docs(session):
     session.run("mkdocs", "build")
 
 
-@nox.session(reuse_venv=True, python=python)
+@nox.session(reuse_venv=True)
 def develop(session):
-    session.install(*doc_dependencies, *lint_dependencies)
     session.install("-e", ".")
-    command = "source %s/bin/activate" % (session.virtualenv.location_name)
-    session.log("Virtual Environment is ready to be used for development")
-    session.log("To use, run: '%s'", command)
+    session.run("yarn", "install", external=True)
+    print("Watching JavaScript file and Python files for changes")
+    with subprocess.Popen(["yarn", "start"]):
+        session.run("python", "gdbgui/backend.py", "--debug")
 
 
 @nox.session(reuse_venv=True)

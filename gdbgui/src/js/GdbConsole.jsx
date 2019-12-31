@@ -41,8 +41,6 @@ export default class GdbConsole extends React.Component {
     term.open(this.ref.current);
     // term.fit();
     term.writeln("Welcome to gdbgui — https://github.com/cs01/gdbgui");
-    term.writeln("Type 'shell' to enter your shell.");
-    term.writeln("");
 
     GdbApi.socket.on("pty_response", function(pty_response) {
       term.write(pty_response);
@@ -53,7 +51,7 @@ export default class GdbConsole extends React.Component {
     });
 
     function fitToscreen() {
-      term.fit();
+      // term.fit();
       GdbApi.socket.emit("resize", { cols: term.cols, rows: term.rows });
     }
 

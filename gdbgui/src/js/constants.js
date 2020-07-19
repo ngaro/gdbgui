@@ -51,7 +51,7 @@ let constants = {
 
   default_max_lines_of_code_to_fetch: 500,
 
-  keys_to_not_log_changes_in_console: ["gdb_mi_output", "gdb_console_entries"]
+  keys_to_not_log_changes_in_console: ["gdb_mi_output"]
 };
 constants["IGNORE_ERRORS_TOKEN_INT"] = parseInt(constants.IGNORE_ERRORS_TOKEN_STR);
 constants["DISASSEMBLY_FOR_MISSING_FILE_INT"] = parseInt(

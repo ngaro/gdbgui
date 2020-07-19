@@ -341,22 +341,38 @@ def client_connected():
         logger.info("Created background thread to read gdb responses")
 
 
-@socketio.on("write_to_pty", namespace="/gdb_listener")
+@socketio.on("write_to_user_pty", namespace="/gdb_listener")
 def write_to_pty(message):
     """Write a character to the user facing pty"""
-    pty = _state.get_pty_from_client_id(request.sid)
-    if pty is not None:
-        try:
-            data = message["data"]
-            print(data)
-            pty.write(data)
-
-        except Exception:
-            err = traceback.format_exc()
-            logger.error(err)
-            emit("error_running_gdb_command", {"message": err})
-    else:
+    debug_session = _state.clients.get(request.sid)
+    if not debug_session:
         emit("error_running_gdb_command", {"message": "gdb is not running"})
+
+    pty = debug_session.pty_for_user
+    try:
+        data = message["data"]
+        pty.write(data)
+    except Exception:
+        err = traceback.format_exc()
+        logger.error(err)
+        emit("error_running_gdb_command", {"message": err})
+
+
+@socketio.on("write_to_program_pty", namespace="/gdb_listener")
+def write_to_pty(message):
+    """Write a character to the user facing pty"""
+    debug_session = _state.clients.get(request.sid)
+    if not debug_session:
+        emit("error_running_gdb_command", {"message": "gdb is not running"})
+
+    pty = debug_session.pty_for_debugged_program
+    try:
+        data = message["data"]
+        pty.write(data)
+    except Exception:
+        err = traceback.format_exc()
+        logger.error(err)
+        emit("error_running_gdb_command", {"message": err})
 
 
 @socketio.on("run_gdb_command", namespace="/gdb_listener")
@@ -474,16 +490,26 @@ def read_and_forward_gdb_and_pty_output():
 
 
 def check_and_forward_pty_output():
-    pty_items = _state.pty_to_client_ids.items()
-    for pty, client_ids in pty_items:
+    for client_id, debug_session in _state.clients.items():
         try:
-            response = pty.read()
-            if response is None:
-                continue
-            for client_id in client_ids:
+            response = debug_session.pty_for_user.read()
+            if response is not None:
                 logger.info(f"emiting message to websocket client id {client_id}")
                 socketio.emit(
-                    "pty_response", response, namespace="/gdb_listener", room=client_id
+                    "user_pty_response",
+                    response,
+                    namespace="/gdb_listener",
+                    room=client_id,
+                )
+
+            response = debug_session.pty_for_debugged_program.read()
+            if response is not None:
+                logger.info(f"emiting message to websocket client id {client_id}")
+                socketio.emit(
+                    "program_pty_response",
+                    response,
+                    namespace="/gdb_listener",
+                    room=client_id,
                 )
         except Exception as e:
             logger.error(e, exc_info=True)

@@ -11,6 +11,18 @@ logger = logging.getLogger(__name__)
 GDB_MI_FLAG = ["--interpreter=mi2"]
 
 
+class DebugSession:
+    def __init__(
+        self,
+        controller: GdbController,
+        pty_for_user: Pty,
+        pty_for_debugged_program: Pty,
+    ):
+        self.controller = GdbController
+        self.pty_for_user = pty_for_user
+        self.pty_for_debugged_program = pty_for_debugged_program
+
+
 class StateManager(object):
     def __init__(self, config: Dict[str, Any]):
         self.controller_to_client_ids: Dict[GdbController, List[str]] = defaultdict(
@@ -22,6 +34,7 @@ class StateManager(object):
         )  # key is controller, val is list of client ids
         self.gdb_reader_thread = None
         self.config = config
+        self.clients: Dict[str, DebugSession] = {}
 
     def get_gdb_args(self):
         gdb_args = copy.copy(GDB_MI_FLAG)
@@ -68,11 +81,16 @@ class StateManager(object):
                 # rr=self.config["rr"],
             )
             controller.write(f"new-ui console {pty_for_user.name}\n")
-            controller.write(f"new-ui set-inferior {pty_for_debugged_program.name}\n")
+            controller.write(f"set inferior-tty {pty_for_debugged_program.name}\n")
             self.controller_to_client_ids[controller].append(client_id)
-
-            # pty = Pty(pty_command)
             self.pty_to_client_ids[pty_for_user].append(client_id)
+
+            # self.sessions[DebugSession] = [client_id]
+            self.clients[client_id] = DebugSession(
+                controller=controller,
+                pty_for_user=pty_for_user,
+                pty_for_debugged_program=pty_for_debugged_program,
+            )
 
         return {
             "pid": pid,
@@ -132,7 +150,7 @@ class StateManager(object):
 
         return None
 
-    def get_pty_from_client_id(self, client_id: str) -> Optional[Pty]:
+    def get_user_pty_from_client_id(self, client_id: str) -> Optional[Pty]:
         for pty, client_ids in self.pty_to_client_ids.items():
             if client_id in client_ids:
                 return pty

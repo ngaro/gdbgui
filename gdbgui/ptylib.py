@@ -15,34 +15,11 @@ import logging
 class Pty:
     max_read_bytes = 1024 * 20
 
-    def __init__(self, command: Optional[List[str]] = None):
-        self.command = command
-        if command:
-            (child_pid, child_pty_fd) = pty.fork()
-            if child_pid == 0:
-                # this is the child process pty, where we run a command
-
-                def signal_no_op(signum, frame):
-                    pass
-
-                signal.signal(signal.SIGINT, signal_no_op)
-
-                subprocess.run(command, bufsize=0)
-            else:
-                # this is the parent process fork, where we can programatically
-                # interact with the child pty via its file descriptor
-                self.stdout = child_pty_fd
-                self.stdin = child_pty_fd
-                self.name = os.ttyname(child_pty_fd)
-        else:
-            # create a new pty, but don't run anything. gdb will attach a new UI to this tty.
-            # When it gdb reads input on this tty, it will write output.
-            # TODO serialize and wait for commands to finish before writing the next command?
-            (master, slave) = pty.openpty()
-            # leave in default "cooked" mode and do NOT switch to raw
-            self.stdin = master
-            self.stdout = master
-            self.name = os.ttyname(slave)
+    def __init__(self):
+        (master, slave) = pty.openpty()
+        self.stdin = master
+        self.stdout = master
+        self.name = os.ttyname(slave)
 
     def set_winsize(self, rows: int, cols: int):
         xpix = 0
@@ -62,12 +39,10 @@ class Pty:
                 response = os.read(self.stdout, self.max_read_bytes).decode()
             except OSError:
                 logging.error(f"Failed to read from pty {self.name}", exc_info=True)
-            #     self.stdout = None
-            # if response == "":
-            #     self.stdout = None
             return response
         return None
 
     def write(self, data: str):
         if self.stdin:
-            os.write(self.stdin, data.encode())
+            edata = data.encode()
+            os.write(self.stdin, edata)

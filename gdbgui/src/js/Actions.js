@@ -61,26 +61,19 @@ const Actions = {
       GdbApi.run_gdb_command(command);
     }
   },
-  clear_console: function() {
-    store.set("gdb_console_entries", []);
-  },
   add_console_entries: function(entries, type) {
     if (!_.isArray(entries)) {
       entries = [entries];
     }
-
-    const typed_entries = entries.map(entry => {
+    const typedEntries = entries.map(entry => {
       return { type: type, value: entry };
     });
-
-    const previous_entries = store.get("gdb_console_entries");
-    const MAX_NUM_ENTRIES = 1000;
-    const new_entries = previous_entries.concat(typed_entries);
-    if (new_entries.length > MAX_NUM_ENTRIES) {
-      new_entries.splice(0, new_entries.length - MAX_NUM_ENTRIES);
+    const gdbguiPty = store.get("gdbguiPty");
+    if (gdbguiPty) {
+      typedEntries.forEach(e => {
+        gdbguiPty.writeln(e.value);
+      });
     }
-
-    store.set("gdb_console_entries", new_entries);
   },
   add_gdb_response_to_console(mi_obj) {
     if (!mi_obj) {

@@ -98,10 +98,10 @@ const initial_store_data = {
 
   gdb_autocomplete_options: [],
 
-  gdb_console_entries: [],
-
   show_filesystem: false,
-  middle_panes_split_obj: {}
+  middle_panes_split_obj: {},
+
+  gdbguiPty: null
 };
 
 function get_stored(key, default_val) {

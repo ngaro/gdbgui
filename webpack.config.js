@@ -10,7 +10,14 @@ module.exports = {
   },
   module: {
     rules: [
-      { test: /\.css$/, loader: "style-loader!css-loader" },
+      {
+        test: /\.css$/,
+        use: ["style-loader", "css-loader", "postcss-loader"]
+      },
+      //    use: [
+      // ,
+      // "css-loader",,
+      // ],
       {
         test: /\.(j|t)sx?$/,
         use: [
@@ -35,6 +42,10 @@ module.exports = {
     ]
   },
   plugins: [
+    // new MiniCssExtractPlugin({
+    //   filename: "gdbgui.css",
+    //   chunkFilename: "gdbgui.css"
+    // }),
     new ForkTsCheckerWebpackPlugin({
       tslint: true,
       tslintAutoFix: true

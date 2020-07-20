@@ -10,12 +10,103 @@ class GdbConsoleContainer extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      selectedOutput: "userPty"
+      selectedOutput: "multiPty"
     };
 
     this.userPtyRef = React.createRef();
     this.programPtyRef = React.createRef();
     this.gdbguiPtyRef = React.createRef();
+    this.terminal = this.terminal.bind(this);
+    this.tabs = this.tabs.bind(this);
+  }
+
+  terminal(color, ref, ptyName) {
+    const multi = this.state.selectedOutput === "multiPty";
+    const selected = this.state.selectedOutput === ptyName;
+    const visible = multi || selected;
+    let className = color + " p-0 m-0 h-full  ";
+    if (visible) {
+      className += " visible ";
+    } else {
+      className += " invisible ";
+    }
+    // if (multi) {
+    let widthClass = "";
+    if (multi) {
+      widthClass = "absolute h-full w-1/3";
+    } else {
+      widthClass = "absolute h-full w-full";
+    }
+    return (
+      <div className={className}>
+        <div className={widthClass}>
+          <div name={ptyName} className={className} ref={ref}></div>
+        </div>
+      </div>
+    );
+    // } else {
+    // className += " absolute w-full ";
+    // return (
+    //   <div className={className}>
+    //     <div name={ptyName} className={className} ref={ref}></div>
+    //   </div>
+    // );
+    // }
+    console.log(className);
+  }
+  render() {
+    console.log(this.state);
+    const multi = this.state.selectedOutput === "multiPty";
+    let terminalsClass = "flex-grow w-full h-full relative text-center ";
+    if (multi) {
+      terminalsClass += " grid grid-cols-3 gap-0 ";
+    }
+    return (
+      <div className="w-full h-full bg-orange-800 flex flex-col">
+        {this.tabs()}
+
+        <div name="terminals" className={terminalsClass}>
+          {this.terminal("bg-yellow-400", this.userPtyRef, "userPty")}
+          {this.terminal("bg-red-400", this.gdbguiPtyRef, "gdbguiPty")}
+          {this.terminal("bg-pink-400", this.programPtyRef, "programPty")}
+        </div>
+      </div>
+    );
+  }
+  tab(name, title) {
+    const output = this.state.selectedOutput;
+    const selected = name === output;
+    let className = "pointer flex-1 text-white font-bold hover:bg-purple-900 py-2  ";
+    if (selected) {
+      className += " bg-purple-900";
+    }
+    //  + output ===
+    // "multiPty"
+    //   ? "bg-blue-300"
+    //   : "bg-black ";
+    return (
+      <div
+        className={className}
+        onClick={() => {
+          this.setState({ selectedOutput: name });
+        }}
+      >
+        {title}
+      </div>
+    );
+  }
+  tabs() {
+    const output = this.state.selectedOutput;
+    return (
+      <div className="w-full flex-grow-0 bg-blue-200 text-black text-center justify-around  m-0">
+        <div className="flex justify-around items-stretch bg-black">
+          {this.tab("multiPty", "All Terminals")}
+          {this.tab("userPty", "gdb")}
+          {this.tab("programPty", "Program input/output")}
+          {this.tab("gdbguiPty", "gdbgui")}
+        </div>
+      </div>
+    );
   }
   componentDidMount() {
     const fitAddon = new FitAddon();
@@ -42,7 +133,8 @@ class GdbConsoleContainer extends React.Component {
     const programPty = new Terminal({
       cursorBlink: true,
       macOptionIsMeta: true,
-      scrollback: 1000
+      scrollback: 1000,
+      theme: { background: "purple" }
     });
     programPty.loadAddon(programFitAddon);
     programPty.open(this.programPtyRef.current);
@@ -57,12 +149,14 @@ class GdbConsoleContainer extends React.Component {
     });
 
     const gdbguiPty = new Terminal({
-      cursorBlink: true,
+      cursorBlink: false,
       macOptionIsMeta: true,
       scrollback: 1000,
-      disableStdin: true
+      disableStdin: true,
+      disableCursor: true,
+      theme: { background: "#888" }
     });
-    gdbguiPty.writeln("gdbgui output. This terminal is read-only.");
+    gdbguiPty.writeln("gdbgui output (read-only)");
     gdbguiPty.loadAddon(gdbguiFitAddon);
     gdbguiPty.open(this.gdbguiPtyRef.current);
     // gdbguiPty is written to elsewhere
@@ -74,68 +168,11 @@ class GdbConsoleContainer extends React.Component {
       programFitAddon.fit();
       gdbguiFitAddon.fit();
     }, 2000);
-    // setTimeout(fitAddon.fit, 0);
-  }
-  render() {
-    console.log(this.state);
-    return (
-      <div className="w-full h-full bg-orange-800 flex flex-col">
-        <div className="w-full flex-grow-0 bg-blue-200 text-black text-center">
-          <ul className="list-none flex w-full justify-around">
-            <li
-              className="pointer chad hover:bg-blue-900"
-              onClick={() => {
-                this.setState({ selectedOutput: "userPty" });
-              }}
-            >
-              User terminal
-            </li>
-            <li
-              className="pointer chad hover:bg-blue-900"
-              onClick={() => {
-                this.setState({ selectedOutput: "gdbguiPty" });
-              }}
-            >
-              gdbgui
-            </li>
-            <li
-              className="pointer chad hover:bg-blue-900"
-              onClick={() => {
-                this.setState({ selectedOutput: "programPty" });
-              }}
-            >
-              Debugged program
-            </li>
-          </ul>
-        </div>
-        <div className="flex-grow w-full max-h-full relative text-center">
-          <div
-            ref={this.userPtyRef}
-            className={
-              (this.state.selectedOutput === "userPty" ? "visible" : "invisible ") +
-              " bg-yellow-400 p-0 m-0 h-full w-full absolute"
-            }
-            ref={this.userPtyRef}
-          ></div>
-
-          <div
-            className={
-              (this.state.selectedOutput === "gdbguiPty" ? "visible" : "invisible ") +
-              " bg-red-400 p-0 m-0 h-full w-full absolute"
-            }
-            ref={this.gdbguiPtyRef}
-          ></div>
-
-          <div
-            className={
-              (this.state.selectedOutput === "programPty" ? "visible" : "invisible ") +
-              " bg-blue-400 p-0 m-0 h-full w-full absolute"
-            }
-            ref={this.programPtyRef}
-          ></div>
-        </div>
-      </div>
-    );
+    setTimeout(() => {
+      fitAddon.fit();
+      programFitAddon.fit();
+      gdbguiFitAddon.fit();
+    }, 0);
   }
 }
 

@@ -264,7 +264,7 @@ td.line_num {
   z-index: 1000;
   background: #f1f1f1;
 }
-.chad {
+/* .chad {
   @apply font-bold py-2 px-4 rounded;
 }
 .btn-blue {
@@ -272,7 +272,7 @@ td.line_num {
 }
 .btn-blue:hover {
   @apply bg-red-700;
-}
+} */
 
 #filesystem ul,
 #filesystem li {

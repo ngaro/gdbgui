@@ -20,7 +20,7 @@ import traceback
 import webbrowser
 from distutils.spawn import find_executable
 from functools import wraps
-
+from typing import Dict
 import pygdbmi  # type: ignore
 from flask import (
     Flask,
@@ -341,34 +341,32 @@ def client_connected():
         logger.info("Created background thread to read gdb responses")
 
 
-@socketio.on("write_to_user_pty", namespace="/gdb_listener")
-def write_to_pty(message):
+@socketio.on("pty_interaction", namespace="/gdb_listener")
+def pty_interaction(message):
     """Write a character to the user facing pty"""
     debug_session = _state.clients.get(request.sid)
     if not debug_session:
         emit("error_running_gdb_command", {"message": "gdb is not running"})
 
-    pty = debug_session.pty_for_user
     try:
-        data = message["data"]
-        pty.write(data)
-    except Exception:
-        err = traceback.format_exc()
-        logger.error(err)
-        emit("error_running_gdb_command", {"message": err})
+        data = message.get("data")
+        pty_name = data.get("pty_name")
 
+        if pty_name == "user_pty":
+            pty = debug_session.pty_for_user
+        elif pty_name == "program_pty":
+            pty = debug_session.pty_for_debugged_program
+        else:
+            raise ValueError(f"Unknown pty: {pty_name}")
 
-@socketio.on("write_to_program_pty", namespace="/gdb_listener")
-def write_to_pty(message):
-    """Write a character to the user facing pty"""
-    debug_session = _state.clients.get(request.sid)
-    if not debug_session:
-        emit("error_running_gdb_command", {"message": "gdb is not running"})
-
-    pty = debug_session.pty_for_debugged_program
-    try:
-        data = message["data"]
-        pty.write(data)
+        action = data.get("action")
+        if action == "write":
+            key = data["key"]
+            pty.write(key)
+        elif action == "set_winsize":
+            pty.set_winsize(data["rows"], data["cols"])
+        else:
+            raise ValueError(f"Unknown action {action}")
     except Exception:
         err = traceback.format_exc()
         logger.error(err)
@@ -376,7 +374,7 @@ def write_to_pty(message):
 
 
 @socketio.on("run_gdb_command", namespace="/gdb_listener")
-def run_gdb_command(message):
+def run_gdb_command(message: Dict[str, str]):
     """Write mi2 commands to the gdb mi2 pty"""
     controller = _state.get_controller_from_client_id(request.sid)
     if controller is not None:
@@ -470,6 +468,7 @@ def read_and_forward_gdb_and_pty_output():
                         logger.info(
                             "emiting message to websocket client id " + client_id
                         )
+                        # print("mi:", response)
                         socketio.emit(
                             "gdb_response",
                             response,

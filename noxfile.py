@@ -99,7 +99,13 @@ def develop(session):
     session.run("yarn", "install", external=True)
     print("Watching JavaScript file and Python files for changes")
     with subprocess.Popen(["yarn", "start"]):
-        session.run("python", "gdbgui/backend.py", "--debug")
+        session.run("python", "gdbgui/backend.py")
+
+
+@nox.session(reuse_venv=True)
+def serve(session):
+    session.install("-e", ".")
+    session.run("python", "gdbgui/backend.py", *session.posargs)
 
 
 @nox.session(reuse_venv=True)

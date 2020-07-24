@@ -61,19 +61,35 @@ const Actions = {
       GdbApi.run_gdb_command(command);
     }
   },
+  onConsoleCommandRun: function() {
+    if (store.get("refresh_state_after_sending_console_command")) {
+      GdbApi.run_gdb_command(GdbApi._get_refresh_state_for_pause_cmds());
+    }
+  },
+  clear_console: function() {
+    store.set("gdb_console_entries", []);
+  },
   add_console_entries: function(entries, type) {
+    if (type === constants.console_entry_type.STD_OUT) {
+      // ignore
+      return;
+    }
     if (!_.isArray(entries)) {
       entries = [entries];
     }
-    const typedEntries = entries.map(entry => {
-      return { type: type, value: entry };
-    });
-    const gdbguiPty = store.get("gdbguiPty");
-    if (gdbguiPty) {
-      typedEntries.forEach(e => {
-        gdbguiPty.writeln(e.value);
+
+    const pty = store.get("gdbguiPty");
+    if (pty) {
+      entries.forEach(data => {
+        pty.write(constants.colorTypeMap[type] ?? constants.xtermColors["reset"]);
+        pty.writeln(data);
+        pty.write(constants.xtermColors["reset"]);
       });
+    } else {
+      console.error("cant log:", entries);
     }
+
+    // store.set("gdb_console_entries", new_entries);
   },
   add_gdb_response_to_console(mi_obj) {
     if (!mi_obj) {

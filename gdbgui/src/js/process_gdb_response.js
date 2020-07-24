@@ -276,14 +276,10 @@ const process_gdb_response = function(response_array) {
               constants.console_entry_type.GDBGUI_OUTPUT
             );
             Actions.add_console_entries(
-              "occurred by clicking the below button.",
+              "occurred by running the command 'backtrace' in the gdb terminal.",
               constants.console_entry_type.GDBGUI_OUTPUT
             );
 
-            Actions.add_console_entries(
-              "Re-Enter Program (backtrace)",
-              constants.console_entry_type.BACKTRACE_LINK
-            );
           }
         } else {
           console.warn("TODO handle new reason for stopping. Notify developer of this.");

@@ -31,7 +31,7 @@ import ToolTipTourguide from "./ToolTipTourguide.jsx";
 
 import "../../static/css/gdbgui.css";
 import "../../static/css/splitjs-gdbgui.css";
-import GdbConsoleContainer from "./GdbConsoleContainer.jsx";
+import GdbConsoleContainer from "./GdbConsoleContainer";
 
 const store_options = {
   immutable: false,

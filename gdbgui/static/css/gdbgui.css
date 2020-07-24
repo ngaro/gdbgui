@@ -38,9 +38,6 @@ td {
 .pre {
   white-space: pre;
 }
-.stderr {
-  color: #ff3434;
-}
 .monospace {
   font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
 }
@@ -101,14 +98,7 @@ td {
   width: 100%;
   background-color: white;
 }
-.sent_command {
-  color: #00d8ff;
-}
-.sent_command:hover,
-.autocmplt:hover {
-  /* lighten background */
-  background-color: rgba(255, 255, 255, 0.1);
-}
+
 .disabled {
   background-color: lightgrey;
   opacity: 0.6;
@@ -365,18 +355,6 @@ td.line_num {
   box-shadow: 9px 10px 31px 0px rgba(0, 0, 0, 0.75);
 }
 
-.otpt {
-  /* output (shortened to keep dom as small as possible */
-  min-height: 1em;
-  margin: 2px;
-  white-space: pre;
-}
-.gdbguiConsoleOutput {
-  color: orange;
-  min-height: 1em;
-  margin: 2px;
-  white-space: pre;
-}
 #gdb_mi_output {
   font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
   overflow: auto;
@@ -463,10 +441,4 @@ ul.varUL {
   to {
     transform: scale(1) rotate(360deg);
   }
-}
-
-#xtermconsole {
-  position: absolute;
-  height: 100%;
-  width: 100%;
 }

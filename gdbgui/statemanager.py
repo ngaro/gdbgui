@@ -91,6 +91,7 @@ class StateManager(object):
                 pty_for_user=pty_for_user,
                 pty_for_debugged_program=pty_for_debugged_program,
             )
+            pid = controller.gdb_process.pid
 
         return {
             "pid": pid,
@@ -166,11 +167,12 @@ class StateManager(object):
     def get_dashboard_data(self):
         data = {}
         for controller, client_ids in self.controller_to_client_ids.items():
-            # if controller.gdb_process:
-            #     pid = str(controller.gdb_process.pid)
-            # else:
-            #     pid = "process no longer exists"
+            if controller.gdb_process:
+                pid = str(controller.gdb_process.pid)
+            else:
+                pid = "process no longer exists"
             data[controller] = {
+                "pid": pid,
                 "cmd": " ".join(controller.cmd),
                 "abs_gdb_path": controller.abs_gdb_path,
                 "number_of_connected_browser_tabs": len(client_ids),

@@ -578,7 +578,10 @@ const FileOps = {
     if (window.isNaN(hex_addr)) {
       return;
     }
-
+    Actions.add_console_entries(
+      "Fetching assembly since file is missing",
+      constants.console_entry_type.GDBGUI_OUTPUT
+    );
     let start = parseInt(hex_addr, 16),
       end = start + 100;
     FileOps.disassembly_addr_being_fetched = hex_addr;
@@ -591,6 +594,10 @@ const FileOps = {
     let addr_being_fetched = FileOps.disassembly_addr_being_fetched;
     FileOps.unfetchable_disassembly_addresses[addr_being_fetched] = true;
     FileOps.disassembly_addr_being_fetched = null;
+    Actions.add_console_entries(
+      "Failed to retrieve assembly for missing file",
+      constants.console_entry_type.GDBGUI_OUTPUT
+    );
   },
   /**
    * Save assembly and render source code if desired

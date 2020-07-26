@@ -351,7 +351,6 @@ def pty_interaction(message):
     try:
         data = message.get("data")
         pty_name = data.get("pty_name")
-
         if pty_name == "user_pty":
             pty = debug_session.pty_for_user
         elif pty_name == "program_pty":
@@ -375,13 +374,15 @@ def pty_interaction(message):
 
 @socketio.on("run_gdb_command", namespace="/gdb_listener")
 def run_gdb_command(message: Dict[str, str]):
-    """Write mi2 commands to the gdb mi2 pty"""
-    controller = _state.get_controller_from_client_id(request.sid)
-    if controller is not None:
+    """Write commands to gdbgui's gdb mi pty"""
+    debug_session = _state.clients.get(request.sid)
+    pty_mi = debug_session.pty_machine_interface
+    if pty_mi is not None:
         try:
             # the command (string) or commands (list) to run
-            cmd = message["cmd"]
-            controller.write(cmd, read_response=False)
+            cmds = message["cmd"]
+            for cmd in cmds:
+                pty_mi.write(cmd + "\n")
 
         except Exception:
             err = traceback.format_exc()
@@ -447,28 +448,34 @@ def read_and_forward_gdb_and_pty_output():
     while True:
         socketio.sleep(0.05)
         controllers_to_remove = []
-        controller_items = _state.controller_to_client_ids.items()
-        for controller, client_ids in controller_items:
+        # clients = _state.controller_to_client_ids.items()
+        for client_id, debug_session in _state.clients.items():
             try:
                 try:
-                    response = controller.get_gdb_response(
+                    # response = None
+                    response = debug_session.controller.get_gdb_response(
                         timeout_sec=0, raise_error_on_timeout=False
                     )
+
+                    # response = controller.get_gdb_response(
+                    #     timeout_sec=0, raise_error_on_timeout=False
+                    # )
                 except NoGdbProcessError:
                     response = None
                     send_msg_to_clients(
-                        client_ids,
+                        [client_id],
                         "The underlying gdb process has been killed. This tab will no longer function as expected.",
                         error=True,
                     )
-                    controllers_to_remove.append(controller)
+                    # controllers_to_remove.append(controller)
 
                 if response:
-                    for client_id in client_ids:
+                    for client_id in [client_id]:
                         logger.info(
                             "emiting message to websocket client id " + client_id
                         )
                         # print("mi:", response)
+                        # response = [{"type": "log", "payload": payload,}]
                         socketio.emit(
                             "gdb_response",
                             response,
@@ -493,7 +500,6 @@ def check_and_forward_pty_output():
         try:
             response = debug_session.pty_for_user.read()
             if response is not None:
-                logger.info(f"emiting message to websocket client id {client_id}")
                 socketio.emit(
                     "user_pty_response",
                     response,
@@ -503,7 +509,6 @@ def check_and_forward_pty_output():
 
             response = debug_session.pty_for_debugged_program.read()
             if response is not None:
-                logger.info(f"emiting message to websocket client id {client_id}")
                 socketio.emit(
                     "program_pty_response",
                     response,

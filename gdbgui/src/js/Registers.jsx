@@ -34,7 +34,7 @@ class Registers extends React.Component {
           register_name_fetch_count++;
           // only fetch register names when we don't have them
           // assumption is that the names don't change over time
-          // cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-data-list-register-names");
+          cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-data-list-register-names");
         } else {
           register_name_fetch_timeout = setTimeout(() => {
             register_name_fetch_count--;
@@ -42,7 +42,7 @@ class Registers extends React.Component {
         }
       }
       // update all registers values
-      // cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-data-list-register-values x");
+      cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-data-list-register-values x");
     } else {
       Registers.clear_cached_values();
     }

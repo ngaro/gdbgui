@@ -19,10 +19,10 @@ function customKeyEventHandler(config: {
     if (!(e.type === "keydown")) {
       return true;
     }
-    if (!e.shiftKey && e.ctrlKey && e.key === "c") {
-      console.log("todo interrupt pid ", store.get(config.pidStoreKey));
-      Actions.send_signal("SIGINT", store.get(config.pidStoreKey));
-    }
+    // if (!e.shiftKey && e.ctrlKey && e.key === "c") {
+    // console.log("todo interrupt pid ", store.get(config.pidStoreKey));
+    // Actions.send_signal("SIGINT", store.get(config.pidStoreKey));
+    // }
     if (e.shiftKey && e.ctrlKey) {
       const key = e.key.toLowerCase();
       if (key === "c") {

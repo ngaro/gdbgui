@@ -4,8 +4,9 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional
 import copy
 from pygdbmi.gdbcontroller import GdbController
-
+from pygdbmi.reader import MiReader
 from .ptylib import Pty
+import tty
 
 logger = logging.getLogger(__name__)
 GDB_MI_FLAG = ["--interpreter=mi2"]
@@ -14,11 +15,14 @@ GDB_MI_FLAG = ["--interpreter=mi2"]
 class DebugSession:
     def __init__(
         self,
+        *,
         controller: GdbController,
+        pty_machine_interface: Pty,
         pty_for_user: Pty,
         pty_for_debugged_program: Pty,
     ):
-        self.controller = GdbController
+        self.controller = controller
+        self.pty_machine_interface = pty_machine_interface
         self.pty_for_user = pty_for_user
         self.pty_for_debugged_program = pty_for_debugged_program
 
@@ -72,26 +76,28 @@ class StateManager(object):
         if self.get_controller_from_client_id(client_id) is None:
             logger.info("new sid", client_id)
 
-            gdb_args = self.get_gdb_args()
-            pty_for_user = Pty()
+            # gdb_args = self.get_gdb_args()
+            pty_for_user = Pty(cmd="gdb")
             pty_for_debugged_program = Pty()
-            controller = GdbController(
-                gdb_path=self.config["gdb_path"],
-                gdb_args=gdb_args,
-                # rr=self.config["rr"],
-            )
-            controller.write(f"new-ui console {pty_for_user.name}\n")
-            controller.write(f"set inferior-tty {pty_for_debugged_program.name}\n")
-            self.controller_to_client_ids[controller].append(client_id)
+            pty_machine_interface = Pty(echo=False)
+            # controller = GdbController(
+            #     gdb_path=self.config["gdb_path"],
+            #     gdb_args=gdb_args,
+            #     # rr=self.config["rr"],
+            # )
+            pty_for_user.write(f"new-ui mi2 {pty_machine_interface.name}\n")
+            pty_for_user.write(f"set inferior-tty {pty_for_debugged_program.name}\n")
+            # self.controller_to_client_ids[controller].append(client_id)
             self.pty_to_client_ids[pty_for_user].append(client_id)
 
             # self.sessions[DebugSession] = [client_id]
             self.clients[client_id] = DebugSession(
-                controller=controller,
+                controller=MiReader(pty_machine_interface.stdin),
+                pty_machine_interface=pty_machine_interface,
                 pty_for_user=pty_for_user,
                 pty_for_debugged_program=pty_for_debugged_program,
             )
-            pid = controller.gdb_process.pid
+            pid = pty_for_user.pid
 
         return {
             "pid": pid,

@@ -22,7 +22,7 @@ pointing and clicking.
 
 ![image](https://github.com/cs01/gdbgui/raw/master/screenshots/stack_and_threads.png)
 
-## Send Signal to Inferior
+## Send Signal to Inferior (debugged) Process
 Choose from any signal your OS supports to send to the inferior. For example, to mock `CTRL+C` in plain gdb, you can send `SIGINT` to interrupt the inferior process. If the inferior process is hung for some reason, you can send `SIGKILL`, etc.
 ![image](https://github.com/cs01/gdbgui/raw/master/screenshots/send_signal.png)
 

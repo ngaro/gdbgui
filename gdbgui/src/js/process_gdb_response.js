@@ -17,6 +17,7 @@ import Locals from "./Locals.jsx";
 import GdbVariable from "./GdbVariable.jsx";
 import Modal from "./GdbguiModal.jsx";
 import Actions from "./Actions.js";
+import { processFeatures } from "./processFeatures";
 
 const process_gdb_response = function(response_array) {
   /**
@@ -24,29 +25,29 @@ const process_gdb_response = function(response_array) {
    * @param response: gdb mi response object
    * @return (bool): true if response should be ignored
    */
-  let is_error = response => {
-      return response.message === "error";
-    },
-    ignore_error = response => {
-      return (
-        response.token === constants.IGNORE_ERRORS_TOKEN_INT ||
-        response.token === constants.CREATE_VAR_INT
-      );
-    },
-    is_creating_var = response => {
-      return response.token === constants.CREATE_VAR_INT;
-    },
+  const isError = response => {
+    return response.message === "error";
+  };
+  const ignoreError = response => {
+    return (
+      response.token === constants.IGNOREERRORS_TOKEN_INT ||
+      response.token === constants.CREATE_VAR_INT
+    );
+  };
+  const isCreatingVar = response => {
+    return response.token === constants.CREATE_VAR_INT;
+  };
 
   for (let r of response_array) {
     console.log(r);
     // gdb mi output
     GdbMiOutput.add_mi_output(r);
 
-    if (is_error(r)) {
-      if (is_creating_var(r)) {
+    if (isError(r)) {
+      if (isCreatingVar(r)) {
         GdbVariable.gdb_variable_fetch_failed(r);
         continue;
-      } else if (ignore_error(r)) {
+      } else if (ignoreError(r)) {
         continue;
       } else if (r.token === constants.DISASSEMBLY_FOR_MISSING_FILE_INT) {
         FileOps.fetch_disassembly_for_missing_file_failed();
@@ -129,7 +130,10 @@ const process_gdb_response = function(response_array) {
       if ("register-names" in r.payload) {
         let names = r.payload["register-names"];
         // filter out empty names
-        store.set("register_names", names.filter(name => name !== ""));
+        store.set(
+          "register_names",
+          names.filter(name => name !== "")
+        );
       }
       if ("register-values" in r.payload) {
         store.set("previous_register_values", store.get("current_register_values"));
@@ -207,6 +211,14 @@ const process_gdb_response = function(response_array) {
       if ("name" in r.payload) {
         GdbVariable.gdb_created_root_variable(r);
       }
+      // features list
+      if ("features" in r.payload) {
+        processFeatures(r.payload.features);
+      }
+      // features list
+      if ("target_features" in r.payload) {
+        processTargetFeatures(r.payload.target_features);
+      }
     } else if (r.type === "result" && r.message === "error") {
       // render it in the status bar, and don't render the last response in the array as it does by default
       Actions.add_gdb_response_to_console(r);
@@ -266,9 +278,7 @@ const process_gdb_response = function(response_array) {
 
           if (r.payload["signal-name"] !== "SIGINT") {
             Actions.add_console_entries(
-              `gdbgui noticed a signal was received (${r.payload["signal-meaning"]}, ${
-                r.payload["signal-name"]
-              }).`,
+              `gdbgui noticed a signal was received (${r.payload["signal-meaning"]}, ${r.payload["signal-name"]}).`,
               constants.console_entry_type.GDBGUI_OUTPUT
             );
             Actions.add_console_entries(
@@ -279,7 +289,6 @@ const process_gdb_response = function(response_array) {
               "occurred by running the command 'backtrace' in the gdb terminal.",
               constants.console_entry_type.GDBGUI_OUTPUT
             );
-
           }
         } else {
           console.warn("TODO handle new reason for stopping. Notify developer of this.");

@@ -12,6 +12,8 @@ type GdbguiSession = {
 const data: GdbguiSession[] = window.gdbgui_sessions;
 // @ts-ignore
 const csrf_token: string = window.csrf_token;
+// @ts-ignore
+const default_command: string = window.default_command;
 function GdbguiSession(props: { session: GdbguiSession }) {
   const session = props.session;
   return (
@@ -64,7 +66,8 @@ function redirect(url: string) {
 class StartCommand extends React.Component<any, { value: string }> {
   constructor(props: {}) {
     super(props);
-    this.state = { value: "gdb" };
+    // @ts-expect-error
+    this.state = { value: window.default_command };
 
     this.handleChange = this.handleChange.bind(this);
     this.handleSubmit = this.handleSubmit.bind(this);
@@ -75,7 +78,9 @@ class StartCommand extends React.Component<any, { value: string }> {
   }
 
   handleSubmit() {
-    const params = new URLSearchParams({ gdb_command: this.state.value }).toString();
+    const params = new URLSearchParams({
+      gdb_command: this.state.value
+    }).toString();
     redirect(`/?${params}`);
   }
 
@@ -86,9 +91,14 @@ class StartCommand extends React.Component<any, { value: string }> {
         <div className="flex w-full mx-auto items-center container">
           <input
             type="text"
-            className="flex-grow leading-9 bg-white focus:outline-none focus:shadow-outline border border-gray-300 py-2 px-2 block appearance-none rounded-l-lg"
+            className="flex-grow leading-9 bg-gray-900 text-gray-100 font-mono focus:outline-none focus:shadow-outline border border-gray-300 py-2 px-2 block appearance-none rounded-l-lg"
             value={this.state.value}
             onChange={this.handleChange}
+            onKeyUp={event => {
+              if (event.key.toLowerCase() === "enter") {
+                this.handleSubmit();
+              }
+            }}
             placeholder="gdb --flag args"
           />
           <button
@@ -102,6 +112,45 @@ class StartCommand extends React.Component<any, { value: string }> {
       </>
     );
   }
+}
+
+function Nav() {
+  return (
+    <nav className="flex items-center justify-between flex-wrap bg-blue-500 p-6">
+      <div className="flex items-center flex-shrink-0 text-white mr-6">
+        <span className="font-semibold text-xl tracking-tight">gdbgui</span>
+      </div>
+
+      <div className="w-full block flex-grow lg:flex lg:items-center lg:w-auto">
+        <div className="text-sm lg:flex-grow">
+          <a
+            href="https://gdbgui.com"
+            className="block mt-4 lg:inline-block lg:mt-0 text-blue-200 hover:text-white mr-4"
+          >
+            Docs
+          </a>
+          <a
+            href="https://www.youtube.com/channel/UCUCOSclB97r9nd54NpXMV5A"
+            className="block mt-4 lg:inline-block lg:mt-0 text-blue-200 hover:text-white mr-4"
+          >
+            YouTube
+          </a>
+          <a
+            href="https://github.com/cs01/gdbgui"
+            className="block mt-4 lg:inline-block lg:mt-0 text-blue-200 hover:text-white mr-4"
+          >
+            GitHub
+          </a>
+          <a
+            href="https://www.paypal.com/paypalme/grassfedcode/20"
+            className="block mt-4 lg:inline-block lg:mt-0 text-blue-200 hover:text-white mr-4"
+          >
+            Donate
+          </a>
+        </div>
+      </div>
+    </nav>
+  );
 }
 
 class Dashboard extends React.PureComponent<any, { sessions: GdbguiSession[] }> {
@@ -130,13 +179,14 @@ class Dashboard extends React.PureComponent<any, { sessions: GdbguiSession[] }> 
     ));
     return (
       <>
+        <Nav />
         <div className="w-full h-full bg-gray-300 text-center p-5">
           <div className="text-3xl font-semibold">Start new session</div>
           <StartCommand />
           <div className="mt-5 text-3xl font-semibold">
-            {data.length === 1
+            {sessions.length === 1
               ? "There is 1 gdbgui session running"
-              : `There are ${data.length} gdbgui sessions running`}
+              : `There are ${sessions.length} gdbgui sessions running`}
           </div>
           <table className="table-auto mx-auto">
             <thead>

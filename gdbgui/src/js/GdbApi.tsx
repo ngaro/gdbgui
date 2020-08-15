@@ -43,15 +43,13 @@ const GdbApi = {
   },
   init: function() {
     const TIMEOUT_MIN = 5;
-    /* global initial_data */
-    const query = new URLSearchParams({
-      csrf_token: initial_data.csrf_token,
-      gdbpid: initial_data.gdbpid,
-      gdb_command: initial_data.gdb_command
-    }).toString();
     socket = io.connect(`/gdb_listener`, {
       timeout: TIMEOUT_MIN * 60 * 1000,
-      query
+      query: {
+        csrf_token: initial_data.csrf_token,
+        gdbpid: initial_data.gdbpid,
+        gdb_command: initial_data.gdb_command
+      }
     });
 
     socket.on("connect", function() {
@@ -64,12 +62,19 @@ const GdbApi = {
       store.set("waiting_for_response", false);
       process_gdb_response(response_array);
     });
-
+    socket.on("fatal_server_error", function(data: { message: null | string }) {
+      Actions.add_console_entries(
+        `Message from server: ${data.message}`,
+        constants.console_entry_type.STD_ERR
+      );
+      socket.close();
+    });
     socket.on("error_running_gdb_command", function(data: { message: any }) {
       Actions.add_console_entries(
         `Error occurred on server when running gdb command: ${data.message}`,
         constants.console_entry_type.STD_ERR
       );
+      socket.close();
     });
 
     socket.on("server_error", function(data: { message: any }) {
@@ -79,33 +84,35 @@ const GdbApi = {
       );
     });
 
-    socket.on("gdb_pid", function(gdb_pid_obj: {
-      pid: any;
-      message: any;
-      error: any;
-      using_existing: any;
+    socket.on("debug_session_connection_event", function(gdb_pid_obj: {
+      pid: number;
+      message: string | void;
+      ok: boolean;
+      started_new_gdb_process: boolean;
     }) {
-      let gdb_pid = gdb_pid_obj.pid,
-        message = gdb_pid_obj.message,
-        error = gdb_pid_obj.error,
-        using_existing = gdb_pid_obj.using_existing;
+      const gdb_pid = gdb_pid_obj.pid;
+      const message = gdb_pid_obj.message;
+      const error = !gdb_pid_obj.ok;
+      const started_new_gdb_process = gdb_pid_obj.started_new_gdb_process;
 
-      Actions.add_console_entries(
-        message,
-        error
-          ? constants.console_entry_type.STD_ERR
-          : constants.console_entry_type.GDBGUI_OUTPUT
-      );
-
+      if (message) {
+        Actions.add_console_entries(
+          message,
+          error
+            ? constants.console_entry_type.STD_ERR
+            : constants.console_entry_type.GDBGUI_OUTPUT
+        );
+      }
+      if (error) {
+        socket.close();
+        return;
+      }
       store.set("gdb_pid", gdb_pid);
-      Actions.add_console_entries(
-        `${store.get("interpreter")} process ${gdb_pid} is running for this tab`,
-        constants.console_entry_type.GDBGUI_OUTPUT
-      );
-      if (using_existing) {
-        Actions.refresh_state_for_gdb_pause();
-      } else {
+
+      if (started_new_gdb_process) {
         GdbApi.run_initial_commands();
+      } else {
+        Actions.refresh_state_for_gdb_pause();
       }
     });
 
@@ -114,18 +121,27 @@ const GdbApi = {
       // on the server is already gone
       window.onbeforeunload = () => null;
 
-      // show modal
-      Actions.show_modal(
-        "",
-        <span>
-          The gdbgui server has shutdown. This tab will no longer function as expected.
-        </span>
+      // Actions.show_modal(
+      //   "",
+      //   <>
+      //     <p>
+      //       The connection to the gdb session has been closed. This tab will no longer
+      //       function as expected.
+      //     </p>
+      //     <p className="font-bold">
+      //       To start a new session, go to the <a href="/dashboard">dashboard</a>.
+      //     </p>
+      //   </>
+      // );
+      Actions.add_console_entries(
+        `The connection to the gdb session has been closed. To start a new session, go to ${window.location.origin}/dashboard`,
+        constants.console_entry_type.STD_ERR
       );
-      debug_print("disconnected");
+
       // @ts-ignore
-      if (debug) {
-        window.location.reload(true);
-      }
+      // if (debug) {
+      //   window.location.reload(true);
+      // }
     });
   },
   _waiting_for_response_timeout: null,
@@ -134,7 +150,7 @@ const GdbApi = {
     GdbApi.run_gdb_command("-exec-run");
   },
   run_initial_commands: function() {
-    const cmds = [""];
+    const cmds = ["-list-features", "-list-target-features"];
     for (const src in initial_data.remap_sources) {
       const dst = initial_data.remap_sources[src];
       cmds.push(`set substitute-path "${src}" "${dst}"`);
@@ -246,6 +262,9 @@ const GdbApi = {
     GdbApi._waiting_for_response_timeout = setTimeout(() => {
       Actions.clear_program_state();
       store.set("waiting_for_response", false);
+      if (GdbApi.getSocket().disconnected) {
+        return;
+      }
 
       Actions.add_console_entries(
         `No gdb response received after ${WAIT_TIME_SEC} seconds.`,
@@ -296,8 +315,10 @@ const GdbApi = {
       Actions.add_console_entries(cmds, constants.console_entry_type.SENT_COMMAND);
     }
 
-    GdbApi.waiting_for_response();
-    socket.emit("run_gdb_command", { cmd: cmds });
+    if (socket.connected) {
+      GdbApi.waiting_for_response();
+      socket.emit("run_gdb_command", { cmd: cmds });
+    }
   },
   /**
    * Run a user-defined command, then refresh the store

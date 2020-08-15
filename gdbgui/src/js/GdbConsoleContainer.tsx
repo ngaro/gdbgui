@@ -87,7 +87,7 @@ class GdbConsoleContainer extends React.Component {
     });
     userPty.loadAddon(fitAddon);
     userPty.open(this.userPtyRef.current);
-    userPty.writeln(`gdb command is: ${store.get("gdb_command")}`);
+    userPty.writeln(`running command: ${store.get("gdb_command")}`);
     userPty.writeln("");
     userPty.attachCustomKeyEventHandler(
       // @ts-expect-error
@@ -165,13 +165,17 @@ class GdbConsoleContainer extends React.Component {
     // gdbguiPty is written to elsewhere
     store.set("gdbguiPty", gdbguiPty);
 
-    setInterval(() => {
+    const interval = setInterval(() => {
       console.log("fitting...");
       fitAddon.fit();
       programFitAddon.fit();
       gdbguiFitAddon.fit();
+      const socket = GdbApi.getSocket();
 
-      GdbApi.getSocket().emit("pty_interaction", {
+      if (socket.disconnected) {
+        return;
+      }
+      socket.emit("pty_interaction", {
         data: {
           pty_name: "user_pty",
           rows: userPty.rows,
@@ -180,7 +184,7 @@ class GdbConsoleContainer extends React.Component {
         }
       });
 
-      GdbApi.getSocket().emit("pty_interaction", {
+      socket.emit("pty_interaction", {
         data: {
           pty_name: "program_pty",
           rows: programPty.rows,

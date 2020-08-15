@@ -17,10 +17,8 @@ import socket
 import sys
 import traceback
 import webbrowser
-from distutils.spawn import find_executable
 from functools import wraps
-from typing import Dict
-import pygdbmi  # type: ignore
+from typing import Dict, List
 from flask import (
     Flask,
     Response,
@@ -36,7 +34,7 @@ from flask_socketio import SocketIO, emit  # type: ignore
 from pygments.lexers import get_lexer_for_filename  # type: ignore
 
 from gdbgui import __version__, htmllistformatter
-from gdbgui.sessionmanager import SessionManager
+from gdbgui.sessionmanager import SessionManager, DebugSession
 
 pyinstaller_env_var_base_dir = "_MEIPASS"
 pyinstaller_base_dir = getattr(sys, "_MEIPASS", None)
@@ -100,9 +98,8 @@ Compress(
 
 app.config["initial_binary_and_args"] = []
 app.config["gdb_path"] = DEFAULT_GDB_EXECUTABLE
-app.config["gdb_cmd_file"] = None
+app.config["gdb_command"] = None
 app.config["TEMPLATES_AUTO_RELOAD"] = True
-app.config["LLDB"] = False  # assume false, okay to change later
 app.config["project_home"] = None
 app.config["remap_sources"] = {}
 app.secret_key = binascii.hexlify(os.urandom(24)).decode("utf-8")
@@ -183,10 +180,8 @@ def setup_backend(
     testing=False,
     private_key=None,
     certificate=None,
-    LLDB=False,
 ):
     """Run the server of the gdb gui"""
-    app.config["LLDB"] = LLDB
 
     kwargs = {}
     ssl_context = get_ssl_context(private_key, certificate)
@@ -238,7 +233,12 @@ def setup_backend(
             b = webbrowser.get(browsername) if browsername else webbrowser
             b.open(url_with_prefix)
         else:
-            print(colorize("View gdbgui at %s%s:%d" % (protocol, url[0], url[1])))
+            print(colorize(f"View gdbgui at {protocol}{url[0]}:{url[1]}"))
+            print(
+                colorize(
+                    f"View gdbgui dashboard at {protocol}{url[0]}:{url[1]}/dashboard"
+                )
+            )
 
         print("exit gdbgui by pressing CTRL+C")
 
@@ -254,38 +254,6 @@ def setup_backend(
         except KeyboardInterrupt:
             # Process was interrupted by ctrl+c on keyboard, show message
             pass
-
-
-def verify_gdb_exists(gdb_path):
-    if find_executable(gdb_path) is None:
-        pygdbmi.printcolor.print_red(
-            'gdb executable "%s" was not found. Verify the executable exists, or that it is a directory on your $PATH environment variable.'
-            % gdb_path
-        )
-        if USING_WINDOWS:
-            print(
-                'Install gdb (package name "mingw32-gdb") using MinGW (https://sourceforge.net/projects/mingw/files/Installer/mingw-get-setup.exe/download), then ensure gdb is on your "Path" environement variable: Control Panel > System Properties > Environment Variables > System Variables > Path'
-            )
-        else:
-            print('try "sudo apt-get install gdb" for Linux or "brew install gdb"')
-        sys.exit(1)
-    elif "lldb" in gdb_path.lower() and "lldb-mi" not in app.config["gdb_path"].lower():
-        pygdbmi.printcolor.print_red(
-            'gdbgui cannot use the standard lldb executable. You must use an executable with "lldb-mi" in its name.'
-        )
-        sys.exit(1)
-
-
-def dbprint(*args):
-    """print only if app.debug is truthy"""
-    if app and app.debug:
-        if USING_WINDOWS:
-            print("DEBUG: " + " ".join(args))
-
-        else:
-            CYELLOW2 = "\33[93m"
-            NORMAL = "\033[0m"
-            print(CYELLOW2 + "DEBUG: " + " ".join(args) + NORMAL)
 
 
 def colorize(text):
@@ -328,21 +296,43 @@ def client_connected():
         )
         return
 
-    # see if user wants to connect to existing gdb pid
     desired_gdbpid = int(request.args.get("gdbpid", 0))
-    gdb_command = request.args.get("gdb_command", app.config["gdb_command"])
-    mi_version = request.args.get("mi_version", "mi2")
-
-    payload = manager.connect_client(
-        request.sid, desired_gdbpid, gdb_command, mi_version
-    )
-    logger.info(
-        'Client websocket connected in async mode "%s", id %s'
-        % (socketio.async_mode, request.sid)
-    )
-
-    # tell the client browser tab which gdb pid is a dedicated to it
-    emit("gdb_pid", payload)
+    try:
+        if desired_gdbpid:
+            # connect to exiting debug session
+            debug_session = manager.connect_client_to_debug_session(
+                desired_gdbpid=desired_gdbpid, client_id=request.sid
+            )
+            emit(
+                "debug_session_connection_event",
+                {
+                    "ok": True,
+                    "started_new_gdb_process": False,
+                    "pid": debug_session.pid,
+                    "message": f"Connected to existing gdb process {desired_gdbpid}",
+                },
+            )
+        else:
+            # start new debug session
+            gdb_command = request.args.get("gdb_command", app.config["gdb_command"])
+            mi_version = request.args.get("mi_version", "mi2")
+            debug_session = manager.add_new_debug_session(
+                gdb_command=gdb_command, mi_version=mi_version, client_id=request.sid
+            )
+            emit(
+                "debug_session_connection_event",
+                {
+                    "ok": True,
+                    "started_new_gdb_process": True,
+                    "message": f"Started new gdb process, pid {debug_session.pid}",
+                    "pid": debug_session.pid,
+                },
+            )
+    except Exception as e:
+        emit(
+            "debug_session_connection_event",
+            {"message": f"Failed to establish gdb session: {e}", "ok": False},
+        )
 
     # Make sure there is a reader thread reading. One thread reads all instances.
     if manager.gdb_reader_thread is None:
@@ -359,7 +349,7 @@ def pty_interaction(message):
     if not debug_session:
         emit(
             "error_running_gdb_command",
-            {"message": f"no gdb session available client id {request.sid}"},
+            {"message": f"no gdb session available for client id {request.sid}"},
         )
         return
 
@@ -367,7 +357,7 @@ def pty_interaction(message):
         data = message.get("data")
         pty_name = data.get("pty_name")
         if pty_name == "user_pty":
-            pty = debug_session.pty_for_user
+            pty = debug_session.pty_for_gdb
         elif pty_name == "program_pty":
             pty = debug_session.pty_for_debugged_program
         else:
@@ -490,6 +480,7 @@ def read_and_forward_gdb_and_pty_output():
 
                 if response:
                     for client_id in client_ids:
+                        print("emitting to", client_id)
                         logger.info(
                             "emiting message to websocket client id " + client_id
                         )
@@ -506,16 +497,16 @@ def read_and_forward_gdb_and_pty_output():
             except Exception:
                 logger.error(traceback.format_exc())
 
-        for debug_session in debug_sessions_to_remove:
+        debug_sessions_to_remove += check_and_forward_pty_output()
+        for debug_session in set(debug_sessions_to_remove):
             manager.remove_debug_session(debug_session)
 
-        check_and_forward_pty_output()
 
-
-def check_and_forward_pty_output():
+def check_and_forward_pty_output() -> List[DebugSession]:
+    debug_sessions_to_remove = []
     for debug_session, client_ids in manager.debug_session_to_client_ids.items():
         try:
-            response = debug_session.pty_for_user.read()
+            response = debug_session.pty_for_gdb.read()
             if response is not None:
                 for client_id in client_ids:
                     socketio.emit(
@@ -535,7 +526,16 @@ def check_and_forward_pty_output():
                         room=client_id,
                     )
         except Exception as e:
+            debug_sessions_to_remove.append(debug_session)
+            for client_id in client_ids:
+                socketio.emit(
+                    "fatal_server_error",
+                    {"message": str(e)},
+                    namespace="/gdb_listener",
+                    room=client_id,
+                )
             logger.error(e, exc_info=True)
+    return debug_sessions_to_remove
 
 
 def server_error(obj):
@@ -602,36 +602,29 @@ def authenticate(f):
 @authenticate
 def gdbgui():
     """Render the main gdbgui interface"""
-    interpreter = "lldb" if app.config["LLDB"] else "gdb"
     gdbpid = request.args.get("gdbpid", 0)
     gdb_command = request.args.get("gdb_command", app.config["gdb_command"])
-
     add_csrf_token_to_session()
 
     THEMES = ["monokai", "light"]
-    # fmt: off
     initial_data = {
         "csrf_token": session["csrf_token"],
         "gdbgui_version": __version__,
         "gdbpid": gdbpid,
         "gdb_command": gdb_command,
-        # "initial_gdb_user_command": initial_gdb_user_command,
-        "interpreter": interpreter,
-        # "initial_binary_and_args": app.config["initial_binary_and_args"],
-        "initial_binary_and_args": [""],
+        "interpreter": gdb_command.split(" ")[0],
+        "initial_binary_and_args": app.config["initial_binary_and_args"],
         "project_home": app.config["project_home"],
         "remap_sources": app.config["remap_sources"],
         "themes": THEMES,
         "signals": SIGNAL_NAME_TO_OBJ,
         "using_windows": USING_WINDOWS,
     }
-    # fmt: on
 
     return render_template(
         "gdbgui.html",
         version=__version__,
         debug=app.debug,
-        interpreter=interpreter,
         initial_data=initial_data,
         themes=THEMES,
     )
@@ -690,6 +683,7 @@ def dashboard():
         "dashboard.html",
         gdbgui_sessions=manager.get_dashboard_data(),
         csrf_token=session["csrf_token"],
+        default_command=app.config["gdb_command"],
     )
 
 
@@ -863,7 +857,9 @@ def get_gdbgui_auth_user_credentials(auth_file, user, password):
 
 
 def get_parser():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
 
     gdb_group = parser.add_argument_group(title="gdb settings")
     args_group = parser.add_mutually_exclusive_group()
@@ -873,27 +869,26 @@ def get_parser():
 
     gdb_group.add_argument(
         "-g",
-        "--gdb",
-        help="Path to debugger. Default: %s" % DEFAULT_GDB_EXECUTABLE,
+        "--gdb-cmd",
+        help="""
+        gdb binary and arguments to run. If passing arguments,
+        enclose in quotes.
+        If using rr, it should be specified here with
+        'rr replay'.
+        Examples: gdb, /path/to/gdb, 'gdb --command=FILE -ix', 'rr replay'
+
+        """,
         default=DEFAULT_GDB_EXECUTABLE,
-    )
-    gdb_group.add_argument(
-        "--gdb-args",
-        help=(
-            "Arguments passed directly to gdb when gdb is invoked. "
-            'For example,--gdb-args="--nx --tty=/dev/ttys002"'
-        ),
-        default="",
     )
     network.add_argument(
         "-p",
         "--port",
-        help="The port on which gdbgui will be hosted. Default: %s" % DEFAULT_PORT,
+        help="The port on which gdbgui will be hosted",
         default=DEFAULT_PORT,
     )
     network.add_argument(
         "--host",
-        help="The host ip address on which gdbgui serve. Default: %s" % DEFAULT_HOST,
+        help="The host ip address on which gdbgui serve",
         default=DEFAULT_HOST,
     )
     network.add_argument(
@@ -936,7 +931,7 @@ def get_parser():
         help=(
             "Replace compile-time source paths to local source paths. "
             "Pass valid JSON key/value pairs."
-            'i.e. --remap-sources=\'{"/buildmachine": "/home/chad"}\''
+            'i.e. --remap-sources=\'{"/buildmachine": "/current/machine"}\''
         ),
     )
     other.add_argument(
@@ -970,20 +965,10 @@ def get_parser():
     )
 
     args_group.add_argument(
-        "cmd",
-        nargs="?",
-        type=lambda prog: [prog],
-        help="The executable file and any arguments to pass to it."
-        " To pass flags to the binary, wrap in quotes, or use --args instead."
-        " Example: gdbgui ./mybinary [other-gdbgui-args...]"
-        " Example: gdbgui './mybinary myarg -flag1 -flag2' [other gdbgui args...]",
-        default=[],
-    )
-    args_group.add_argument(
         "--args",
         nargs=argparse.REMAINDER,
         help="Specify the executable file and any arguments to pass to it. All arguments are"
-        " taken literally, so if used, this must be the last argument"
+        " taken literally, so if used, this must be the last argument. This can also be specified later in the frontend."
         " passed to gdbgui."
         " Example: gdbgui [...] --args ./mybinary myarg -flag1 -flag2",
         default=[],
@@ -1004,8 +989,8 @@ def main():
         print("Cannot specify no-browser and browser. Must specify one or the other.")
         exit(1)
 
-    # TODO parse user-defined gdb command
-    app.config["gdb_command"] = "gdb"
+    app.config["gdb_command"] = args.gdb_cmd
+    app.config["initial_binary_and_args"] = args.args
     app.config["gdbgui_auth_user_credentials"] = get_gdbgui_auth_user_credentials(
         args.auth_file, args.user, args.password
     )
@@ -1020,7 +1005,6 @@ def main():
             print(e)
             exit(1)
 
-    # verify_gdb_exists(app.config["gdb_path"])
     if args.remote:
         args.host = "0.0.0.0"
         args.no_browser = True
@@ -1030,7 +1014,7 @@ def main():
                 "accessible IP address. See gdbgui --help."
             )
 
-    if warn_startup_with_shell_off(platform.platform().lower(), args.gdb_args):
+    if warn_startup_with_shell_off(platform.platform().lower(), args.gdb_cmd):
         logger.warning(
             "You may need to set startup-with-shell off when running on a mac. i.e.\n"
             "  gdbgui --gdb-args='--init-eval-command=\"set startup-with-shell off\"'\n"
@@ -1050,7 +1034,7 @@ def main():
     )
 
 
-def warn_startup_with_shell_off(platform, gdb_args):
+def warn_startup_with_shell_off(platform: str, gdb_args: str):
     """return True if user may need to turn shell off
     if mac OS version is 16 (sierra) or higher, may need to set shell off due
     to os's security requirements

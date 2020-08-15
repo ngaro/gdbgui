@@ -2,12 +2,10 @@ import fcntl
 import pty
 import select
 import struct
-import subprocess
 import termios
 import signal
 from typing import Optional
 import os
-import logging
 import shlex
 
 
@@ -21,16 +19,14 @@ class Pty:
                 # this is the child process fork.
                 # anything printed here will show up in the pty, including the output
                 # of this subprocess
-                def signal_handler(sig, frame):
-                    # ctrl+c should not exit the whole program
+                def sigint_handler(sig, frame):
+                    # prevent SIGINT (ctrl+c) from exiting
+                    # the whole program
                     pass
 
-                signal.signal(signal.SIGINT, signal_handler)
+                signal.signal(signal.SIGINT, sigint_handler)
                 args = shlex.split(cmd)
-                try:
-                    subprocess.run(args, bufsize=0)
-                except Exception as e:
-                    print(f"Command failed: {e}")
+                os.execvp(args[0], args)
 
             else:
                 # this is the parent process fork.
@@ -62,23 +58,19 @@ class Pty:
         ypix = 0
         winsize = struct.pack("HHHH", rows, cols, xpix, ypix)
         if self.stdin is None:
-            raise RuntimeError("fd not assigned")
+            raise RuntimeError("fd stdin not assigned")
         fcntl.ioctl(self.stdin, termios.TIOCSWINSZ, winsize)
 
     def read(self) -> Optional[str]:
         if self.stdout is None:
             return "done"
         timeout_sec = 0
-        (data_ready, _, _) = select.select([self.stdout], [], [], timeout_sec)
-        if data_ready:
-            try:
-                response = os.read(self.stdout, self.max_read_bytes).decode()
-            except OSError:
-                logging.error(f"Failed to read from pty {self.name}", exc_info=True)
+        (data_to_read, _, _) = select.select([self.stdout], [], [], timeout_sec)
+        if data_to_read:
+            response = os.read(self.stdout, self.max_read_bytes).decode()
             return response
         return None
 
     def write(self, data: str):
-        if self.stdin:
-            edata = data.encode()
-            os.write(self.stdin, edata)
+        edata = data.encode()
+        os.write(self.stdin, edata)

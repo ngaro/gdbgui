@@ -5,7 +5,7 @@ module.exports = {
   // entry: "./gdbgui/src/js/gdbgui.jsx",
   entry: {
     main: "./gdbgui/src/js/gdbgui.jsx",
-    dashboard: "./gdbgui/src/js/dashboard.jsx"
+    dashboard: "./gdbgui/src/js/dashboard.tsx"
   },
   devtool: "source-map",
   output: {
@@ -18,10 +18,6 @@ module.exports = {
         test: /\.css$/,
         use: ["style-loader", "css-loader", "postcss-loader"]
       },
-      //    use: [
-      // ,
-      // "css-loader",,
-      // ],
       {
         test: /\.(j|t)sx?$/,
         use: [
@@ -46,10 +42,6 @@ module.exports = {
     ]
   },
   plugins: [
-    // new MiniCssExtractPlugin({
-    //   filename: "gdbgui.css",
-    //   chunkFilename: "gdbgui.css"
-    // }),
     new ForkTsCheckerWebpackPlugin({
       tslint: true,
       tslintAutoFix: true

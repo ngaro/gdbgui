@@ -87,7 +87,7 @@ class GdbConsoleContainer extends React.Component {
     });
     userPty.loadAddon(fitAddon);
     userPty.open(this.userPtyRef.current);
-    userPty.writeln(`Running gdb command: ${store.get("gdb_command")}`);
+    userPty.writeln(`gdb command is: ${store.get("gdb_command")}`);
     userPty.writeln("");
     userPty.attachCustomKeyEventHandler(
       // @ts-expect-error

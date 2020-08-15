@@ -36,7 +36,7 @@ from flask_socketio import SocketIO, emit  # type: ignore
 from pygments.lexers import get_lexer_for_filename  # type: ignore
 
 from gdbgui import __version__, htmllistformatter
-from gdbgui.statemanager import StateManager
+from gdbgui.sessionmanager import SessionManager
 
 pyinstaller_env_var_base_dir = "_MEIPASS"
 pyinstaller_base_dir = getattr(sys, "_MEIPASS", None)
@@ -117,13 +117,13 @@ def csrf_protect_all_post_and_cross_origin_requests():
         logger.warning("Received cross origin request. Aborting")
         abort(403)
     if request.method in ["POST", "PUT"]:
-        token = session.get("csrf_token")
-        if token == request.form.get("csrf_token"):
+        server_token = session.get("csrf_token")
+        if server_token == request.form.get("csrf_token"):
             return success
-
-        elif token == request.environ.get("HTTP_X_CSRFTOKEN"):
+        elif server_token == request.environ.get("HTTP_X_CSRFTOKEN"):
             return success
-
+        elif request.json and server_token == request.json.get("csrf_token"):
+            return success
         else:
             logger.warning("Received invalid csrf token. Aborting")
             abort(403)
@@ -170,7 +170,7 @@ def add_csrf_token_to_session():
 
 
 socketio = SocketIO(manage_session=False)
-_state = StateManager(app.config)
+manager = SessionManager(app.config)
 
 
 def setup_backend(
@@ -333,7 +333,7 @@ def client_connected():
     gdb_command = request.args.get("gdb_command", app.config["gdb_command"])
     mi_version = request.args.get("mi_version", "mi2")
 
-    payload = _state.connect_client(
+    payload = manager.connect_client(
         request.sid, desired_gdbpid, gdb_command, mi_version
     )
     logger.info(
@@ -345,8 +345,8 @@ def client_connected():
     emit("gdb_pid", payload)
 
     # Make sure there is a reader thread reading. One thread reads all instances.
-    if _state.gdb_reader_thread is None:
-        _state.gdb_reader_thread = socketio.start_background_task(
+    if manager.gdb_reader_thread is None:
+        manager.gdb_reader_thread = socketio.start_background_task(
             target=read_and_forward_gdb_and_pty_output
         )
         logger.info("Created background thread to read gdb responses")
@@ -355,7 +355,7 @@ def client_connected():
 @socketio.on("pty_interaction", namespace="/gdb_listener")
 def pty_interaction(message):
     """Write a character to the user facing pty"""
-    debug_session = _state.debug_session_from_client_id(request.sid)
+    debug_session = manager.debug_session_from_client_id(request.sid)
     if not debug_session:
         emit(
             "error_running_gdb_command",
@@ -391,7 +391,7 @@ def pty_interaction(message):
 def run_gdb_command(message: Dict[str, str]):
     """Write commands to gdbgui's gdb mi pty"""
     client_id = request.sid  # type: ignore
-    debug_session = _state.debug_session_from_client_id(client_id)
+    debug_session = manager.debug_session_from_client_id(client_id)
     if not debug_session:
         emit("error_running_gdb_command", {"message": "no session"})
         return
@@ -436,7 +436,7 @@ def send_msg_to_clients(client_ids, msg, error=False):
 def remove_gdb_controller():
     gdbpid = int(request.form.get("gdbpid"))
 
-    orphaned_client_ids = _state.remove_debug_session_by_pid(gdbpid)
+    orphaned_client_ids = manager.remove_debug_session_by_pid(gdbpid)
     num_removed = len(orphaned_client_ids)
 
     send_msg_to_clients(
@@ -456,7 +456,7 @@ def remove_gdb_controller():
 @socketio.on("disconnect", namespace="/gdb_listener")
 def client_disconnected():
     """do nothing if client disconnects"""
-    _state.disconnect_client(request.sid)
+    manager.disconnect_client(request.sid)
     logger.info("Client websocket disconnected, id %s" % (request.sid))
 
 
@@ -472,8 +472,7 @@ def read_and_forward_gdb_and_pty_output():
     while True:
         socketio.sleep(0.05)
         debug_sessions_to_remove = []
-        # clients = _state.controller_to_client_ids.items()
-        for debug_session, client_ids in _state.debug_session_to_client_ids.items():
+        for debug_session, client_ids in manager.debug_session_to_client_ids.items():
             try:
                 try:
                     response = debug_session.pygdbmi_controller.get_gdb_response(
@@ -507,14 +506,14 @@ def read_and_forward_gdb_and_pty_output():
             except Exception:
                 logger.error(traceback.format_exc())
 
-        for controller in debug_sessions_to_remove:
-            _state.remove_gdb_controller(controller)
+        for debug_session in debug_sessions_to_remove:
+            manager.remove_debug_session(debug_session)
 
         check_and_forward_pty_output()
 
 
 def check_and_forward_pty_output():
-    for debug_session, client_ids in _state.debug_session_to_client_ids.items():
+    for debug_session, client_ids in manager.debug_session_to_client_ids.items():
         try:
             response = debug_session.pty_for_user.read()
             if response is not None:
@@ -689,9 +688,26 @@ def dashboard():
     GdbController instance"""
     return render_template(
         "dashboard.html",
-        data=_state.get_dashboard_data(),
+        gdbgui_sessions=manager.get_dashboard_data(),
         csrf_token=session["csrf_token"],
     )
+
+
+@app.route("/dashboard_data", methods=["GET"])
+@authenticate
+def dashboard_data():
+    return jsonify(manager.get_dashboard_data())
+
+
+@app.route("/kill_session", methods=["PUT"])
+@authenticate
+def kill_session():
+    pid = request.json.get("gdbpid")
+    if pid:
+        manager.remove_debug_session_by_pid(pid)
+        return jsonify({"success": True})
+    else:
+        return Response("Missing required parameter: gdbpid", 401,)
 
 
 @app.route("/shutdown", methods=["GET"])
@@ -711,7 +727,7 @@ def help():
 @app.route("/_shutdown", methods=["POST"])
 def _shutdown():
     try:
-        _state.exit_all_gdb_processes()
+        manager.exit_all_gdb_processes()
     except Exception:
         logger.error("failed to exit gdb subprocces")
         logger.error(traceback.format_exc())

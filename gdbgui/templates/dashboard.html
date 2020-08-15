@@ -12,8 +12,8 @@
     <div id="dashboard">Loading dashboard...</div>
   </body>
   <script>
-    console.log({{data | tojson}})
-    window.data = {{data | tojson}}
+    window.gdbgui_sessions = {{gdbgui_sessions | tojson}}
+    window.csrf_token = {{csrf_token | tojson}}
   </script>
   <script type="text/javascript" src="static/js/dashboard.js?_={{version}}"></script>
 </html>

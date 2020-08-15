@@ -15,7 +15,7 @@ import React from "react";
 import { store, middleware } from "statorgfc";
 
 import constants from "./constants.js";
-import GdbApi from "./GdbApi.jsx";
+import GdbApi from "./GdbApi";
 import FileOps from "./FileOps.jsx";
 import FoldersView from "./FoldersView.jsx";
 import GlobalEvents from "./GlobalEvents.js";

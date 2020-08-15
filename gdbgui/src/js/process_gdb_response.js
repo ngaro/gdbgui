@@ -12,7 +12,7 @@ import constants from "./constants.js";
 import Threads from "./Threads.jsx";
 import FileOps from "./FileOps.jsx";
 import Memory from "./Memory.jsx";
-import GdbApi from "./GdbApi.jsx";
+import GdbApi from "./GdbApi";
 import Locals from "./Locals.jsx";
 import GdbVariable from "./GdbVariable.jsx";
 import Modal from "./GdbguiModal.jsx";
@@ -230,7 +230,7 @@ const process_gdb_response = function(response_array) {
         // GNU gdb (Ubuntu 7.7.1-0ubuntu5~14.04.2) 7.7.1
         let m = /GNU gdb \(.*\)\s+([0-9|.]*)\\n/g;
         let a = m.exec(r.payload);
-        if (_.isArray(a) && a.length === 2) {
+        if (Array.isArray(a) && a.length === 2) {
           store.set("gdb_version", a[1]);
           store.set("gdb_version_array", a[1].split("."));
         }

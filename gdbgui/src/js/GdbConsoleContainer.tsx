@@ -1,13 +1,11 @@
 import React from "react";
-import GdbApi from "./GdbApi.jsx";
+import GdbApi from "./GdbApi";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { store } from "statorgfc";
 import "xterm/css/xterm.css";
-import GdbGuiTerminal from "./GdbGuiTerminal";
 import constants from "./constants";
 import Actions from "./Actions";
-import Pty from "./Pty.jsx";
 
 function customKeyEventHandler(config: {
   pty_name: string;
@@ -36,7 +34,7 @@ function customKeyEventHandler(config: {
         }
         const toPaste = await navigator.clipboard.readText();
 
-        GdbApi.socket.emit("pty_interaction", {
+        GdbApi.getSocket().emit("pty_interaction", {
           data: { pty_name: config.pty_name, key: toPaste, action: "write" }
         });
         return false;
@@ -46,7 +44,10 @@ function customKeyEventHandler(config: {
   };
 }
 class GdbConsoleContainer extends React.Component {
-  constructor(props) {
+  userPtyRef: React.RefObject<any>;
+  programPtyRef: React.RefObject<any>;
+  gdbguiPtyRef: React.RefObject<any>;
+  constructor(props: any) {
     super(props);
     this.userPtyRef = React.createRef();
     this.programPtyRef = React.createRef();
@@ -54,7 +55,7 @@ class GdbConsoleContainer extends React.Component {
     this.terminal = this.terminal.bind(this);
   }
 
-  terminal(ref) {
+  terminal(ref: React.RefObject<any>) {
     let className = " bg-black p-0 m-0 h-full align-baseline ";
     return (
       <div className={className}>
@@ -65,7 +66,7 @@ class GdbConsoleContainer extends React.Component {
   render() {
     let terminalsClass = "w-full h-full relative grid grid-cols-3 ";
     return (
-      <div name="terminals" className={terminalsClass}>
+      <div className={terminalsClass}>
         {this.terminal(this.userPtyRef)}
         {/* <GdbGuiTerminal /> */}
         {this.terminal(this.gdbguiPtyRef)}
@@ -86,7 +87,10 @@ class GdbConsoleContainer extends React.Component {
     });
     userPty.loadAddon(fitAddon);
     userPty.open(this.userPtyRef.current);
+    userPty.writeln(`Running gdb command: ${store.get("gdb_command")}`);
+    userPty.writeln("");
     userPty.attachCustomKeyEventHandler(
+      // @ts-expect-error
       customKeyEventHandler({
         pty_name: "user_pty",
         pty: userPty,
@@ -94,11 +98,11 @@ class GdbConsoleContainer extends React.Component {
         pidStoreKey: "gdb_pid"
       })
     );
-    GdbApi.socket.on("user_pty_response", function(data) {
+    GdbApi.getSocket().on("user_pty_response", function(data: string) {
       userPty.write(data);
     });
     userPty.onKey((data, ev) => {
-      GdbApi.socket.emit("pty_interaction", {
+      GdbApi.getSocket().emit("pty_interaction", {
         data: { pty_name: "user_pty", key: data.key, action: "write" }
       });
       if (data.domEvent.code === "Enter") {
@@ -114,6 +118,7 @@ class GdbConsoleContainer extends React.Component {
     programPty.loadAddon(programFitAddon);
     programPty.open(this.programPtyRef.current);
     programPty.attachCustomKeyEventHandler(
+      // @ts-expect-error
       customKeyEventHandler({
         pty_name: "program_pty",
         pty: programPty,
@@ -127,11 +132,11 @@ class GdbConsoleContainer extends React.Component {
         "You can read output and send input to the program from here."
     );
     programPty.writeln(constants.xtermColors.reset);
-    GdbApi.socket.on("program_pty_response", function(pty_response) {
+    GdbApi.getSocket().on("program_pty_response", function(pty_response: string) {
       programPty.write(pty_response);
     });
     programPty.onKey((data, ev) => {
-      GdbApi.socket.emit("pty_interaction", {
+      GdbApi.getSocket().emit("pty_interaction", {
         data: { pty_name: "program_pty", key: data.key, action: "write" }
       });
     });
@@ -140,8 +145,7 @@ class GdbConsoleContainer extends React.Component {
       cursorBlink: false,
       macOptionIsMeta: true,
       scrollback: 9999,
-      disableStdin: true,
-      disableCursor: true
+      disableStdin: true
       // theme: { background: "#888" }
     });
     gdbguiPty.write(constants.xtermColors.grey);
@@ -152,6 +156,7 @@ class GdbConsoleContainer extends React.Component {
     gdbguiPty.write(constants.xtermColors.reset);
 
     gdbguiPty.attachCustomKeyEventHandler(
+      // @ts-expect-error
       customKeyEventHandler({ pty_name: "unused", pty: gdbguiPty, canPaste: false })
     );
 
@@ -166,7 +171,7 @@ class GdbConsoleContainer extends React.Component {
       programFitAddon.fit();
       gdbguiFitAddon.fit();
 
-      GdbApi.socket.emit("pty_interaction", {
+      GdbApi.getSocket().emit("pty_interaction", {
         data: {
           pty_name: "user_pty",
           rows: userPty.rows,
@@ -175,7 +180,7 @@ class GdbConsoleContainer extends React.Component {
         }
       });
 
-      GdbApi.socket.emit("pty_interaction", {
+      GdbApi.getSocket().emit("pty_interaction", {
         data: {
           pty_name: "program_pty",
           rows: programPty.rows,

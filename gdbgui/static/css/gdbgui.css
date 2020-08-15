@@ -1,7 +1,7 @@
 @import "tailwindcss/base";
 @import "tailwindcss/components";
 @import "tailwindcss/utilities";
-3
+
 /* styling for all html tags */
 body {
   background: #f5f6f7;
@@ -239,7 +239,7 @@ td.line_num {
   font-family: monospace;
 }
 .memory_char:empty {
-  content: ?;
+  content: "?";
 }
 
 /* specific styling for ids or components */

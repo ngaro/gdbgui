@@ -1,5 +1,5 @@
 import { store } from "statorgfc";
-import GdbApi from "./GdbApi.jsx";
+import GdbApi from "./GdbApi";
 import SourceCode from "./SourceCode.jsx";
 import Locals from "./Locals.jsx";
 import Memory from "./Memory.jsx";
@@ -74,7 +74,7 @@ const Actions = {
       // ignore
       return;
     }
-    if (!_.isArray(entries)) {
+    if (!Array.isArray(entries)) {
       entries = [entries];
     }
 

@@ -12,7 +12,6 @@ import logging
 import os
 import platform
 import re
-import shlex
 import signal
 import socket
 import sys
@@ -34,7 +33,6 @@ from flask import (
 )
 from flask_compress import Compress  # type: ignore
 from flask_socketio import SocketIO, emit  # type: ignore
-from pygdbmi.gdbcontroller import NoGdbProcessError  # type: ignore
 from pygments.lexers import get_lexer_for_filename  # type: ignore
 
 from gdbgui import __version__, htmllistformatter
@@ -300,6 +298,15 @@ def colorize(text):
 
 @socketio.on("connect", namespace="/gdb_listener")
 def client_connected():
+    """Connect a websocket client to a debug session
+
+    This is the main intial connection.
+
+    Depending on the arguments passed, the client will connect
+    to an existing debug session, or create a new one.
+    A message is a emitted back to the client with details on
+    the debug session that was created or connected to.
+    """
     if is_cross_origin(request):
         logger.warning("Received cross origin request. Aborting")
         abort(403)
@@ -323,8 +330,12 @@ def client_connected():
 
     # see if user wants to connect to existing gdb pid
     desired_gdbpid = int(request.args.get("gdbpid", 0))
+    gdb_command = request.args.get("gdb_command", app.config["gdb_command"])
+    mi_version = request.args.get("mi_version", "mi2")
 
-    payload = _state.connect_client(request.sid, desired_gdbpid)
+    payload = _state.connect_client(
+        request.sid, desired_gdbpid, gdb_command, mi_version
+    )
     logger.info(
         'Client websocket connected in async mode "%s", id %s'
         % (socketio.async_mode, request.sid)
@@ -344,9 +355,13 @@ def client_connected():
 @socketio.on("pty_interaction", namespace="/gdb_listener")
 def pty_interaction(message):
     """Write a character to the user facing pty"""
-    debug_session = _state.clients.get(request.sid)
+    debug_session = _state.debug_session_from_client_id(request.sid)
     if not debug_session:
-        emit("error_running_gdb_command", {"message": "gdb is not running"})
+        emit(
+            "error_running_gdb_command",
+            {"message": f"no gdb session available client id {request.sid}"},
+        )
+        return
 
     try:
         data = message.get("data")
@@ -375,14 +390,23 @@ def pty_interaction(message):
 @socketio.on("run_gdb_command", namespace="/gdb_listener")
 def run_gdb_command(message: Dict[str, str]):
     """Write commands to gdbgui's gdb mi pty"""
-    debug_session = _state.clients.get(request.sid)
-    pty_mi = debug_session.pty_machine_interface
+    client_id = request.sid  # type: ignore
+    debug_session = _state.debug_session_from_client_id(client_id)
+    if not debug_session:
+        emit("error_running_gdb_command", {"message": "no session"})
+        return
+    pty_mi = debug_session.pygdbmi_controller
     if pty_mi is not None:
         try:
             # the command (string) or commands (list) to run
             cmds = message["cmd"]
             for cmd in cmds:
-                pty_mi.write(cmd + "\n")
+                pty_mi.write(
+                    cmd + "\n",
+                    timeout_sec=0,
+                    raise_error_on_timeout=False,
+                    read_response=False,
+                )
 
         except Exception:
             err = traceback.format_exc()
@@ -412,7 +436,7 @@ def send_msg_to_clients(client_ids, msg, error=False):
 def remove_gdb_controller():
     gdbpid = int(request.form.get("gdbpid"))
 
-    orphaned_client_ids = _state.remove_gdb_controller_by_pid(gdbpid)
+    orphaned_client_ids = _state.remove_debug_session_by_pid(gdbpid)
     num_removed = len(orphaned_client_ids)
 
     send_msg_to_clients(
@@ -447,35 +471,29 @@ def read_and_forward_gdb_and_pty_output():
 
     while True:
         socketio.sleep(0.05)
-        controllers_to_remove = []
+        debug_sessions_to_remove = []
         # clients = _state.controller_to_client_ids.items()
-        for client_id, debug_session in _state.clients.items():
+        for debug_session, client_ids in _state.debug_session_to_client_ids.items():
             try:
                 try:
-                    # response = None
-                    response = debug_session.controller.get_gdb_response(
+                    response = debug_session.pygdbmi_controller.get_gdb_response(
                         timeout_sec=0, raise_error_on_timeout=False
                     )
 
-                    # response = controller.get_gdb_response(
-                    #     timeout_sec=0, raise_error_on_timeout=False
-                    # )
-                except NoGdbProcessError:
+                except Exception:
                     response = None
                     send_msg_to_clients(
-                        [client_id],
+                        client_ids,
                         "The underlying gdb process has been killed. This tab will no longer function as expected.",
                         error=True,
                     )
-                    # controllers_to_remove.append(controller)
+                    debug_sessions_to_remove.append(debug_session)
 
                 if response:
-                    for client_id in [client_id]:
+                    for client_id in client_ids:
                         logger.info(
                             "emiting message to websocket client id " + client_id
                         )
-                        # print("mi:", response)
-                        # response = [{"type": "log", "payload": payload,}]
                         socketio.emit(
                             "gdb_response",
                             response,
@@ -489,32 +507,34 @@ def read_and_forward_gdb_and_pty_output():
             except Exception:
                 logger.error(traceback.format_exc())
 
-        for controller in controllers_to_remove:
+        for controller in debug_sessions_to_remove:
             _state.remove_gdb_controller(controller)
 
         check_and_forward_pty_output()
 
 
 def check_and_forward_pty_output():
-    for client_id, debug_session in _state.clients.items():
+    for debug_session, client_ids in _state.debug_session_to_client_ids.items():
         try:
             response = debug_session.pty_for_user.read()
             if response is not None:
-                socketio.emit(
-                    "user_pty_response",
-                    response,
-                    namespace="/gdb_listener",
-                    room=client_id,
-                )
+                for client_id in client_ids:
+                    socketio.emit(
+                        "user_pty_response",
+                        response,
+                        namespace="/gdb_listener",
+                        room=client_id,
+                    )
 
             response = debug_session.pty_for_debugged_program.read()
             if response is not None:
-                socketio.emit(
-                    "program_pty_response",
-                    response,
-                    namespace="/gdb_listener",
-                    room=client_id,
-                )
+                for client_id in client_ids:
+                    socketio.emit(
+                        "program_pty_response",
+                        response,
+                        namespace="/gdb_listener",
+                        room=client_id,
+                    )
         except Exception as e:
             logger.error(e, exc_info=True)
 
@@ -585,7 +605,7 @@ def gdbgui():
     """Render the main gdbgui interface"""
     interpreter = "lldb" if app.config["LLDB"] else "gdb"
     gdbpid = request.args.get("gdbpid", 0)
-    initial_gdb_user_command = request.args.get("initial_gdb_user_command", "")
+    gdb_command = request.args.get("gdb_command", app.config["gdb_command"])
 
     add_csrf_token_to_session()
 
@@ -595,9 +615,11 @@ def gdbgui():
         "csrf_token": session["csrf_token"],
         "gdbgui_version": __version__,
         "gdbpid": gdbpid,
-        "initial_gdb_user_command": initial_gdb_user_command,
+        "gdb_command": gdb_command,
+        # "initial_gdb_user_command": initial_gdb_user_command,
         "interpreter": interpreter,
-        "initial_binary_and_args": app.config["initial_binary_and_args"],
+        # "initial_binary_and_args": app.config["initial_binary_and_args"],
+        "initial_binary_and_args": [""],
         "project_home": app.config["project_home"],
         "remap_sources": app.config["remap_sources"],
         "themes": THEMES,
@@ -667,7 +689,7 @@ def dashboard():
     GdbController instance"""
     return render_template(
         "dashboard.html",
-        processes=_state.get_dashboard_data(),
+        data=_state.get_dashboard_data(),
         csrf_token=session["csrf_token"],
     )
 
@@ -958,22 +980,16 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    # if args.debug:
-    #     logger.setLevel(logging.NOTSET)
-
     if args.version:
         print(__version__)
         return
-
-    cmd = args.cmd or args.args
 
     if args.no_browser and args.browser:
         print("Cannot specify no-browser and browser. Must specify one or the other.")
         exit(1)
 
-    app.config["initial_binary_and_args"] = cmd
-    app.config["gdb_args"] = shlex.split(args.gdb_args)
-    app.config["gdb_path"] = args.gdb
+    # TODO parse user-defined gdb command
+    app.config["gdb_command"] = "gdb"
     app.config["gdbgui_auth_user_credentials"] = get_gdbgui_auth_user_credentials(
         args.auth_file, args.user, args.password
     )
@@ -988,7 +1004,7 @@ def main():
             print(e)
             exit(1)
 
-    verify_gdb_exists(app.config["gdb_path"])
+    # verify_gdb_exists(app.config["gdb_path"])
     if args.remote:
         args.host = "0.0.0.0"
         args.no_browser = True

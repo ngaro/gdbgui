@@ -1,5 +1,5 @@
 import { store } from "statorgfc";
-import GdbApi from "./GdbApi.jsx";
+import GdbApi from "./GdbApi";
 import constants from "./constants.js";
 import Actions from "./Actions.js";
 import React from "react"; // needed for jsx
@@ -608,7 +608,7 @@ const FileOps = {
   save_new_assembly: function(mi_assembly, mi_token) {
     FileOps.disassembly_addr_being_fetched = null;
 
-    if (!_.isArray(mi_assembly) || mi_assembly.length === 0) {
+    if (!Array.isArray(mi_assembly) || mi_assembly.length === 0) {
       console.error("Attempted to save unexpected assembly", mi_assembly);
     }
 

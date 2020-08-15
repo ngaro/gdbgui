@@ -5,12 +5,10 @@ import struct
 import subprocess
 import termios
 import signal
-import time
-import tty
-from typing import List, Optional
+from typing import Optional
 import os
 import logging
-import sys
+import shlex
 
 
 class Pty:
@@ -28,7 +26,12 @@ class Pty:
                     pass
 
                 signal.signal(signal.SIGINT, signal_handler)
-                subprocess.run(cmd, bufsize=0)
+                args = shlex.split(cmd)
+                try:
+                    subprocess.run(args, bufsize=0)
+                except Exception as e:
+                    print(f"Command failed: {e}")
+
             else:
                 # this is the parent process fork.
                 # store child fd and pid
@@ -45,9 +48,9 @@ class Pty:
     def set_echo(self, echo_on: bool) -> None:
         (iflag, oflag, cflag, lflag, ispeed, ospeed, cc) = termios.tcgetattr(self.stdin)
         if echo_on:
-            lflag = lflag & termios.ECHO
+            lflag = lflag & termios.ECHO  # type: ignore
         else:
-            lflag = lflag & ~termios.ECHO
+            lflag = lflag & ~termios.ECHO  # type: ignore
         termios.tcsetattr(
             self.stdin,
             termios.TCSANOW,

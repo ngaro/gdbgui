@@ -1,103 +1,96 @@
 import logging
 import traceback
-from collections import defaultdict
 from typing import Any, Dict, List, Optional
-import copy
-from pygdbmi.gdbcontroller import GdbController
-from pygdbmi.reader import MiReader
+from pygdbmi.IoManager import IoManager
+from collections import defaultdict
 from .ptylib import Pty
-import tty
+import os
 
 logger = logging.getLogger(__name__)
-GDB_MI_FLAG = ["--interpreter=mi2"]
 
 
 class DebugSession:
     def __init__(
         self,
         *,
-        controller: GdbController,
+        pygdbmi_controller: IoManager,
         pty_machine_interface: Pty,
         pty_for_user: Pty,
         pty_for_debugged_program: Pty,
+        command: str,
+        mi_version: str,
+        pid: int,
     ):
-        self.controller = controller
+        self.command = command
+        self.pygdbmi_controller = pygdbmi_controller
         self.pty_machine_interface = pty_machine_interface
         self.pty_for_user = pty_for_user
         self.pty_for_debugged_program = pty_for_debugged_program
+        self.mi_version = mi_version
+        self.pid = pid
+
+    def terminate(self):
+        if self.pid:
+            os.kill(self.pid)
+        logger.error("TODO kill reader")
 
 
 class StateManager(object):
-    def __init__(self, config: Dict[str, Any]):
-        self.controller_to_client_ids: Dict[GdbController, List[str]] = defaultdict(
+    def __init__(self, app_config: Dict[str, Any]):
+        self.debug_session_to_client_ids: Dict[DebugSession, List[str]] = defaultdict(
             list
         )  # key is controller, val is list of client ids
 
-        self.pty_to_client_ids: Dict[Pty, List[str]] = defaultdict(
-            list
-        )  # key is controller, val is list of client ids
         self.gdb_reader_thread = None
-        self.config = config
-        self.clients: Dict[str, DebugSession] = {}
+        self.config = app_config
 
-    def get_gdb_args(self):
-        gdb_args = copy.copy(GDB_MI_FLAG)
-        if self.config["gdb_args"]:
-            gdb_args += self.config["gdb_args"]
-
-        if self.config["initial_binary_and_args"]:
-            gdb_args += ["--args"]
-            gdb_args += self.config["initial_binary_and_args"]
-        return gdb_args
-
-    def connect_client(self, client_id: str, desired_gdbpid: int) -> Dict[str, Any]:
+    def connect_client(
+        self, client_id: str, desired_gdbpid: int, gdb_command: str, mi_version: str
+    ) -> Dict[str, Any]:
         message = ""
         pid: Optional[int] = 0
         error = False
         using_existing = False
 
         if desired_gdbpid > 0:
-            controller = self.get_controller_from_pid(desired_gdbpid)
+            debug_session = self.debug_session_from_pid(desired_gdbpid)
 
-            if controller:
-                self.controller_to_client_ids[controller].append(client_id)
-                message = ("gdbgui is using existing subprocess with pid %s") % (
-                    str(desired_gdbpid)
+            if debug_session:
+                self.debug_session_to_client_ids[debug_session].append(client_id)
+                message = (
+                    f"gdbgui is using existing subprocess with pid {desired_gdbpid}"
                 )
                 using_existing = True
                 pid = desired_gdbpid
             else:
-                print("error! could not find that pid")
-                message = "Could not find a gdb subprocess with pid %s. " % str(
-                    desired_gdbpid
-                )
+                logger.error(f"could not find session with pid {desired_gdbpid}")
+                message = f"Could not find a gdb subprocess with pid {desired_gdbpid}"
                 error = True
 
-        if self.get_controller_from_client_id(client_id) is None:
+        if self.debug_session_from_client_id(client_id) is None:
             logger.info("new sid", client_id)
 
-            # gdb_args = self.get_gdb_args()
-            pty_for_user = Pty(cmd="gdb")
+            pty_for_user = Pty(cmd=gdb_command)
             pty_for_debugged_program = Pty()
             pty_machine_interface = Pty(echo=False)
-            # controller = GdbController(
-            #     gdb_path=self.config["gdb_path"],
-            #     gdb_args=gdb_args,
-            #     # rr=self.config["rr"],
-            # )
-            pty_for_user.write(f"new-ui mi2 {pty_machine_interface.name}\n")
+            pty_for_user.write(f"new-ui {mi_version} {pty_machine_interface.name}\n")
             pty_for_user.write(f"set inferior-tty {pty_for_debugged_program.name}\n")
-            # self.controller_to_client_ids[controller].append(client_id)
-            self.pty_to_client_ids[pty_for_user].append(client_id)
 
-            # self.sessions[DebugSession] = [client_id]
-            self.clients[client_id] = DebugSession(
-                controller=MiReader(pty_machine_interface.stdin),
+            pid = pty_for_user.pid
+            debug_session = DebugSession(
+                pygdbmi_controller=IoManager(
+                    os.fdopen(pty_machine_interface.stdin, mode="wb", buffering=0),
+                    os.fdopen(pty_machine_interface.stdout, mode="rb", buffering=0),
+                    None,
+                ),
                 pty_machine_interface=pty_machine_interface,
                 pty_for_user=pty_for_user,
                 pty_for_debugged_program=pty_for_debugged_program,
+                command=gdb_command,
+                mi_version=mi_version,
+                pid=pid,
             )
-            pid = pty_for_user.pid
+            self.debug_session_to_client_ids[debug_session] = [client_id]
 
         return {
             "pid": pid,
@@ -106,88 +99,74 @@ class StateManager(object):
             "using_existing": using_existing,
         }
 
-    def remove_gdb_controller_by_pid(self, gdbpid: int) -> List[str]:
-        controller = self.get_controller_from_pid(gdbpid)
-        if controller:
-            orphaned_client_ids = self.remove_gdb_controller(controller)
+    def remove_debug_session_by_pid(self, gdbpid: int) -> List[str]:
+        debug_session = self.debug_session_from_pid(gdbpid)
+        if debug_session:
+            orphaned_client_ids = self.remove_debug_session(debug_session)
         else:
-            logger.info("could not find gdb controller with pid " + str(gdbpid))
+            logger.info(f"could not find debug session with gdb pid {gdbpid}")
             orphaned_client_ids = []
         return orphaned_client_ids
 
-    def remove_gdb_controller(self, controller: GdbController) -> List[str]:
+    def remove_debug_session(self, debug_session: DebugSession) -> List[str]:
         try:
-            controller.terminate()
+            debug_session.terminate()
         except Exception:
             logger.error(traceback.format_exc())
-        orphaned_client_ids = self.controller_to_client_ids.pop(controller, [])
+        orphaned_client_ids = self.debug_session_to_client_ids.pop(debug_session, [])
         return orphaned_client_ids
 
     def get_client_ids_from_gdb_pid(self, pid: int) -> List[str]:
-        controller = self.get_controller_from_pid(pid)
-        if controller:
-            return self.controller_to_client_ids.get(controller, [])
+        debug_session = self.debug_session_from_pid(pid)
+        if debug_session:
+            return self.debug_session_to_client_ids.get(debug_session, [])
         return []
 
-    def get_client_ids_from_controller(self, controller: GdbController):
-        return self.controller_to_client_ids.get(controller, [])
-
-    # def get_pid_from_controller(
-    #     self, controller: GdbController
-    # ) -> Optional[int]:
-    #     if controller and controller.pid:
-    #         return controller.pid
-
-    #     return None
-
-    # def get_controller_from_pid(
-    #     self, pid: int
-    # ) -> Optional[GdbController]:
-    #     for controller in self.controller_to_client_ids:
-    #         this_pid = self.get_pid_from_controller(controller)
-    #         if this_pid == pid:
-    #             return controller
-
-    #     return None
-
-    def get_controller_from_client_id(self, client_id: str) -> Optional[GdbController]:
-        for controller, client_ids in self.controller_to_client_ids.items():
-            if client_id in client_ids:
-                return controller
-
+    def get_pid_from_debug_session(self, debug_session: DebugSession) -> Optional[int]:
+        if debug_session and debug_session.pid:
+            return debug_session.pid
         return None
 
-    def get_user_pty_from_client_id(self, client_id: str) -> Optional[Pty]:
-        for pty, client_ids in self.pty_to_client_ids.items():
-            if client_id in client_ids:
-                return pty
+    def debug_session_from_pid(self, pid: int) -> Optional[DebugSession]:
+        for debug_session in self.debug_session_to_client_ids:
+            this_pid = self.get_pid_from_debug_session(debug_session)
+            if this_pid == pid:
+                return debug_session
+        return None
 
+    def debug_session_from_client_id(self, client_id: str) -> Optional[DebugSession]:
+        for debug_session, client_ids in self.debug_session_to_client_ids.items():
+            if client_id in client_ids:
+                return debug_session
         return None
 
     def exit_all_gdb_processes(self):
         logger.info("exiting all subprocesses")
-        for controller in self.controller_to_client_ids:
-            controller.terminate()
-            self.controller_to_client_ids.pop(controller)
+        for debug_session in self.debug_session_to_client_ids:
+            # TODO kill gdb process and controller
+            logger.info(f"Exiting debug session for pid {debug_session.pid}")
+            debug_session.terminate()
+            self.debug_session_to_client_ids.pop(debug_session)
 
-    def get_dashboard_data(self):
-        data = {}
-        for controller, client_ids in self.controller_to_client_ids.items():
-            if controller.gdb_process:
-                pid = str(controller.gdb_process.pid)
+    def get_dashboard_data(self) -> List[Any]:
+        data = []
+        for debug_session, client_ids in self.debug_session_to_client_ids.items():
+            if debug_session.pid:
+                pid = str(debug_session.pid)
             else:
                 pid = "process no longer exists"
-            data[controller] = {
-                "pid": pid,
-                "cmd": " ".join(controller.cmd),
-                "abs_gdb_path": controller.abs_gdb_path,
-                "number_of_connected_browser_tabs": len(client_ids),
-                "client_ids": client_ids,
-            }
+            data.append(
+                {
+                    "pid": pid,
+                    "cmd": debug_session.command,
+                    "number_of_connected_browser_tabs": len(client_ids),
+                    "client_ids": client_ids,
+                }
+            )
         return data
 
     def disconnect_client(self, client_id: str):
-        for _, client_ids in self.controller_to_client_ids.items():
+        for _, client_ids in self.debug_session_to_client_ids.items():
             if client_id in client_ids:
                 client_ids.remove(client_id)
 

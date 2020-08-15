@@ -3,6 +3,7 @@ from pathlib import Path
 from sys import platform
 import subprocess
 
+nox.options.reuse_existing_virtualenvs
 nox.options.sessions = ["tests", "lint", "docs"]
 python = ["3.6", "3.7", "3.8"]
 
@@ -51,15 +52,7 @@ def cover(session):
 
 @nox.session(reuse_venv=True)
 def lint(session):
-    session.run(
-        "npx",
-        "prettier@1.18.2",
-        "--check",
-        "--config",
-        ".prettierrc.js",
-        "gdbgui/src/js/**/*",
-        external=True,
-    )
+
     session.install(*lint_dependencies)
     session.run("black", "--check", *files_to_lint)
     session.run("flake8", *files_to_lint)
@@ -70,6 +63,15 @@ def lint(session):
         "build.js,gdbgui/static/js,gdbgui/static/js/build.js.map",
     )
     session.run("python", "setup.py", "check", "--metadata", "--strict")
+    session.run(
+        "npx",
+        "prettier@1.18.2",
+        "--check",
+        "--config",
+        ".prettierrc.js",
+        "gdbgui/src/js/**/*",
+        external=True,
+    )
 
 
 @nox.session(reuse_venv=True)

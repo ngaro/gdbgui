@@ -1,7 +1,7 @@
 import React from "react";
 
 import Actions from "./Actions.js";
-import GdbApi from "./GdbApi.jsx";
+import GdbApi from "./GdbApi";
 import { store } from "statorgfc";
 
 class ControlButtons extends React.Component {

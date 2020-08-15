@@ -29,3 +29,5 @@ exclude yarn.lock
 exclude noxfile.py
 exclude CHANGELOG.md
 exclude CONTRIBUTING.md
+exclude postcss.config.js
+exclude tailwind.config.js

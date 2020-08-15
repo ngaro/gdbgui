@@ -10,12 +10,18 @@ import GdbVariable from "./GdbVariable.jsx";
 import constants from "./constants.js";
 import process_gdb_response from "./process_gdb_response.js";
 import React from "react";
+import io from "socket.io-client";
 void React; // needed when using JSX, but not marked as used
-
 /* global debug */
 
 // print to console if debug is true
-let debug_print;
+let debug_print: {
+  (arg0: string): void;
+  (...data: any[]): void;
+  (message?: any, ...optionalParams: any[]): void;
+  (): void;
+};
+// @ts-ignore
 if (debug) {
   debug_print = console.info;
 } else {
@@ -28,41 +34,57 @@ if (debug) {
  * This object contains methods to interact with
  * gdb, but does not directly render anything in the DOM.
  */
+// @ts-ignore
+const initial_data = window.initial_data;
+let socket: SocketIOClient.Socket;
 const GdbApi = {
+  getSocket: function() {
+    return socket;
+  },
   init: function() {
     const TIMEOUT_MIN = 5;
-    /* global io */
     /* global initial_data */
-    GdbApi.socket = io.connect(`/gdb_listener`, {
+    const query = new URLSearchParams({
+      csrf_token: initial_data.csrf_token,
+      gdbpid: initial_data.gdbpid,
+      gdb_command: initial_data.gdb_command
+    }).toString();
+    socket = io.connect(`/gdb_listener`, {
       timeout: TIMEOUT_MIN * 60 * 1000,
-      query: `csrf_token=${initial_data.csrf_token}&gdbpid=${initial_data.gdbpid}`
+      query
     });
 
-    GdbApi.socket.on("connect", function() {
+    socket.on("connect", function() {
       debug_print("connected");
     });
 
-    GdbApi.socket.on("gdb_response", function(response_array) {
+    socket.on("gdb_response", function(response_array: any) {
+      // @ts-ignore
       clearTimeout(GdbApi._waiting_for_response_timeout);
       store.set("waiting_for_response", false);
       process_gdb_response(response_array);
     });
 
-    GdbApi.socket.on("error_running_gdb_command", function(data) {
+    socket.on("error_running_gdb_command", function(data: { message: any }) {
       Actions.add_console_entries(
         `Error occurred on server when running gdb command: ${data.message}`,
         constants.console_entry_type.STD_ERR
       );
     });
 
-    GdbApi.socket.on("server_error", function(data) {
+    socket.on("server_error", function(data: { message: any }) {
       Actions.add_console_entries(
         `Server message: ${data.message}`,
         constants.console_entry_type.STD_ERR
       );
     });
 
-    GdbApi.socket.on("gdb_pid", function(gdb_pid_obj) {
+    socket.on("gdb_pid", function(gdb_pid_obj: {
+      pid: any;
+      message: any;
+      error: any;
+      using_existing: any;
+    }) {
       let gdb_pid = gdb_pid_obj.pid,
         message = gdb_pid_obj.message,
         error = gdb_pid_obj.error,
@@ -87,7 +109,7 @@ const GdbApi = {
       }
     });
 
-    GdbApi.socket.on("disconnect", function() {
+    socket.on("disconnect", function() {
       // we no longer need to warn the user before they exit the page since the gdb process
       // on the server is already gone
       window.onbeforeunload = () => null;
@@ -100,6 +122,7 @@ const GdbApi = {
         </span>
       );
       debug_print("disconnected");
+      // @ts-ignore
       if (debug) {
         window.location.reload(true);
       }
@@ -111,13 +134,10 @@ const GdbApi = {
     GdbApi.run_gdb_command("-exec-run");
   },
   run_initial_commands: function() {
-    const cmds = ["set breakpoint pending on"];
+    const cmds = [""];
     for (const src in initial_data.remap_sources) {
       const dst = initial_data.remap_sources[src];
       cmds.push(`set substitute-path "${src}" "${dst}"`);
-    }
-    if (initial_data.initial_gdb_user_command) {
-      cmds.push(initial_data.initial_gdb_user_command);
     }
     GdbApi.run_gdb_command(cmds);
   },
@@ -172,11 +192,13 @@ const GdbApi = {
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command("-exec-interrupt");
   },
-  send_autocomplete_command: function(command) {
+  send_autocomplete_command: function(command: string) {
     Actions.inferior_program_resuming();
     GdbApi.run_gdb_command("complete " + command);
   },
-  click_gdb_cmd_button: function(e) {
+  click_gdb_cmd_button: function(e: {
+    currentTarget: { dataset: { [x: string]: any; cmd: undefined; cmd0: undefined } };
+  }) {
     if (e.currentTarget.dataset.cmd !== undefined) {
       // run single command
       // i.e. <a data-cmd='cmd' />
@@ -201,12 +223,12 @@ const GdbApi = {
       );
     }
   },
-  select_frame: function(framenum) {
+  select_frame: function(framenum: any) {
     // TODO this command is deprecated (https://sourceware.org/gdb/onlinedocs/gdb/GDB_002fMI-Stack-Manipulation.html)
     // This command in deprecated in favor of passing the ‘--frame’ option to every command.
     GdbApi.run_command_and_refresh_state(`-stack-select-frame ${framenum}`);
   },
-  select_thread_id: function(thread_id) {
+  select_thread_id: function(thread_id: any) {
     // TODO this command is deprecated (http://www.sourceware.org/gdb/current/onlinedocs/gdb/GDB_002fMI-Thread-Commands.html)
     // This command is deprecated in favor of explicitly using the ‘--thread’ option to each command.
     GdbApi.run_command_and_refresh_state(`-thread-select ${thread_id}`);
@@ -218,7 +240,9 @@ const GdbApi = {
   waiting_for_response: function() {
     store.set("waiting_for_response", true);
     const WAIT_TIME_SEC = 10;
+    // @ts-ignore
     clearTimeout(GdbApi._waiting_for_response_timeout);
+    // @ts-ignore
     GdbApi._waiting_for_response_timeout = setTimeout(() => {
       Actions.clear_program_state();
       store.set("waiting_for_response", false);
@@ -255,12 +279,14 @@ const GdbApi = {
    * @param cmd: a string or array of strings, that are directly evaluated by gdb
    * @return nothing
    */
-  run_gdb_command: function(cmd) {
+  run_gdb_command: function(cmd: any) {
+    // @ts-ignore
     if (_.trim(cmd) === "") {
       return;
     }
 
     let cmds = cmd;
+    // @ts-ignore
     if (_.isString(cmds)) {
       cmds = [cmds];
     }
@@ -271,20 +297,21 @@ const GdbApi = {
     }
 
     GdbApi.waiting_for_response();
-    GdbApi.socket.emit("run_gdb_command", { cmd: cmds });
+    socket.emit("run_gdb_command", { cmd: cmds });
   },
   /**
    * Run a user-defined command, then refresh the store
    * @param user_cmd (str or array): command or commands to run before refreshing store
    */
-  run_command_and_refresh_state: function(user_cmd) {
+  run_command_and_refresh_state: function(user_cmd: string | any[]) {
     // if(!user_cmd){
     //     console.error('missing required argument')
     //     return
     // }
-    let cmds = [];
-    if (_.isArray(user_cmd)) {
+    let cmds: any[] = [];
+    if (Array.isArray(user_cmd)) {
       cmds = cmds.concat(user_cmd);
+      // @ts-ignore
     } else if (_.isString(user_cmd) && user_cmd.length > 0) {
       cmds.push(user_cmd);
     }
@@ -337,9 +364,9 @@ const GdbApi = {
   refresh_breakpoints: function() {
     GdbApi.run_gdb_command([GdbApi.get_break_list_cmd()]);
   },
-  get_inferior_binary_last_modified_unix_sec(path) {
+  get_inferior_binary_last_modified_unix_sec(path: any) {
     $.ajax({
-      beforeSend: function(xhr) {
+      beforeSend: function(xhr: { setRequestHeader: (arg0: string, arg1: any) => void }) {
         xhr.setRequestHeader("x-csrftoken", initial_data.csrf_token);
       },
       url: "/get_last_modified_unix_sec",
@@ -350,7 +377,7 @@ const GdbApi = {
       error: GdbApi._error_getting_last_modified_unix_sec
     });
   },
-  get_insert_break_cmd: function(fullname, line) {
+  get_insert_break_cmd: function(fullname: any, line: any) {
     if (store.get("interpreter") === "gdb") {
       return [`-break-insert "${fullname}:${line}"`];
     } else {
@@ -358,7 +385,7 @@ const GdbApi = {
       return [`breakpoint set --file ${fullname} --line ${line}`];
     }
   },
-  get_delete_break_cmd: function(bkpt_num) {
+  get_delete_break_cmd: function(bkpt_num: any) {
     if (store.get("interpreter") === "gdb") {
       return `-break-delete ${bkpt_num}`;
     } else {
@@ -367,14 +394,9 @@ const GdbApi = {
     }
   },
   get_break_list_cmd: function() {
-    if (store.get("interpreter") === "gdb") {
-      return "-break-list";
-    } else if (store.get("interpreter") === "lldb") {
-      console.log("TODOLLDB - find mi-friendly command");
-      return "breakpoint list";
-    }
+    return "-break-list";
   },
-  get_load_binary_and_arguments_cmds(binary, args) {
+  get_load_binary_and_arguments_cmds(binary: any, args: any) {
     // tell gdb which arguments to use when calling the binary, before loading the binary
     let cmds = [
       `-exec-arguments ${args}`, // Set the inferior program arguments, to be used in the next `-exec-run`
@@ -387,10 +409,10 @@ const GdbApi = {
     cmds.push(GdbApi.get_break_list_cmd());
     return cmds;
   },
-  set_assembly_flavor(flavor) {
-    GdbApi.run_gdb_command("set disassembly-flavor " + flavor);
+  set_assembly_flavor(flavor: string) {
+    GdbApi.run_gdb_command(`set disassembly-flavor ${flavor}`);
   },
-  _recieve_last_modified_unix_sec(data) {
+  _recieve_last_modified_unix_sec(data: { path: any; last_modified_unix_sec: any }) {
     if (data.path === store.get("inferior_binary_path")) {
       store.set(
         "inferior_binary_path_last_modified_unix_sec",
@@ -398,10 +420,11 @@ const GdbApi = {
       );
     }
   },
-  _error_getting_last_modified_unix_sec(data) {
+  _error_getting_last_modified_unix_sec(data: any) {
     void data;
     store.set("inferior_binary_path", null);
   }
 };
-
+// @ts-ignore
+GdbApi.socket = socket;
 export default GdbApi;

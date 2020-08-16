@@ -3,7 +3,7 @@
 ## development
 **Breaking Changes**
 * Removed `cmd` positional argument from CLI. Use `--args` instead.
-* Replaced `--gdb` flag with `--gdb-cmd`. The `--gdb-cmd` argument specifies the gdb executable as well as all arguments you wish to pass to gdb at startup.
+* Replaced `--gdb` flag with `--gdb-cmd`. The `--gdb-cmd` argument specifies the gdb executable as well as all arguments you wish to pass to gdb at startup, for example `--gdb-cmd "gdb -nx"`.
 * Removed `--rr` flag. Use `--gdb-cmd rr replay` instead.
 
 **Additional Changes**

@@ -10,7 +10,6 @@ import constants from "./constants.js";
 const initial_store_data = {
   // environment
   debug: debug, // if gdbgui is run in debug mode
-  interpreter: initial_data.interpreter, // either 'gdb' or 'llvm'
   gdbgui_version: initial_data.gdbgui_version,
   latest_gdbgui_version: "(not fetched)",
   gdb_version: undefined, // this is parsed from gdb's output

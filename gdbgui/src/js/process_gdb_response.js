@@ -121,19 +121,12 @@ const process_gdb_response = function(response_array) {
       }
       if ("threads" in r.payload) {
         store.set("threads", r.payload.threads);
-        if (store.get("interpreter") === "gdb") {
-          store.set("current_thread_id", parseInt(r.payload["current-thread-id"]));
-        } else if (store.get("interpreter") === "lldb") {
-          // lldb does not provide this
-        }
+        store.set("current_thread_id", parseInt(r.payload["current-thread-id"]));
       }
       if ("register-names" in r.payload) {
         let names = r.payload["register-names"];
         // filter out empty names
-        store.set(
-          "register_names",
-          names.filter(name => name !== "")
-        );
+        store.set("register_names", names.filter(name => name !== ""));
       }
       if ("register-values" in r.payload) {
         store.set("previous_register_values", store.get("current_register_values"));
@@ -278,7 +271,9 @@ const process_gdb_response = function(response_array) {
 
           if (r.payload["signal-name"] !== "SIGINT") {
             Actions.add_console_entries(
-              `gdbgui noticed a signal was received (${r.payload["signal-meaning"]}, ${r.payload["signal-name"]}).`,
+              `gdbgui noticed a signal was received (${r.payload["signal-meaning"]}, ${
+                r.payload["signal-name"]
+              }).`,
               constants.console_entry_type.GDBGUI_OUTPUT
             );
             Actions.add_console_entries(

@@ -360,14 +360,8 @@ const GdbApi = {
       // and the name and type for arrays, structures and unions.
       constants.IGNORE_ERRORS_TOKEN_STR + "-stack-list-variables --simple-values"
     ];
-    if (store.get("interpreter") === "gdb") {
-      // update all user-defined variables in gdb
-      cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-var-update --all-values *");
-    } else if (store.get("interpreter") === "lldb") {
-      // the * arg doesn't work, so loop over all
-      // names and push commands for each
-      cmds = cmds.concat(GdbVariable.get_update_cmds());
-    }
+    // update all user-defined variables in gdb
+    cmds.push(constants.IGNORE_ERRORS_TOKEN_STR + "-var-update --all-values *");
 
     // update registers
     cmds = cmds.concat(Registers.get_update_cmds());
@@ -400,20 +394,10 @@ const GdbApi = {
     });
   },
   get_insert_break_cmd: function(fullname: any, line: any) {
-    if (store.get("interpreter") === "gdb") {
-      return [`-break-insert "${fullname}:${line}"`];
-    } else {
-      console.log("TODOLLDB - find mi-friendly command");
-      return [`breakpoint set --file ${fullname} --line ${line}`];
-    }
+    return [`-break-insert "${fullname}:${line}"`];
   },
   get_delete_break_cmd: function(bkpt_num: any) {
-    if (store.get("interpreter") === "gdb") {
-      return `-break-delete ${bkpt_num}`;
-    } else {
-      console.log("TODOLLDB - find mi-friendly command");
-      return `breakpoint delete ${bkpt_num}`;
-    }
+    return `-break-delete ${bkpt_num}`;
   },
   get_break_list_cmd: function() {
     return "-break-list";

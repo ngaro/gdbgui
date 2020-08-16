@@ -611,7 +611,6 @@ def gdbgui():
         "gdbgui_version": __version__,
         "gdbpid": gdbpid,
         "gdb_command": gdb_command,
-        "interpreter": gdb_command.split(" ")[0],
         "initial_binary_and_args": app.config["initial_binary_and_args"],
         "project_home": app.config["project_home"],
         "remap_sources": app.config["remap_sources"],

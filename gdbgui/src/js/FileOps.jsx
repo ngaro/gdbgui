@@ -145,7 +145,6 @@ const FileOps = {
         "missing_files",
         "files_being_fetched",
         "gdb_version_array",
-        "interpreter",
         "fullname_to_render",
         "line_of_source_to_flash",
         "cached_source_files",
@@ -532,15 +531,10 @@ const FileOps = {
   },
   get_fetch_disassembly_command: function(fullname, start_line, mi_response_format) {
     if (_.isString(fullname)) {
-      if (store.get("interpreter") === "gdb") {
-        return (
-          constants.INLINE_DISASSEMBLY_STR +
-          `-data-disassemble -f ${fullname} -l ${start_line} -n 1000 -- ${mi_response_format}`
-        );
-      } else {
-        console.log("TODOLLDB - get mi command to disassemble");
-        return `disassemble --frame`;
-      }
+      return (
+        constants.INLINE_DISASSEMBLY_STR +
+        `-data-disassemble -f ${fullname} -l ${start_line} -n 1000 -- ${mi_response_format}`
+      );
     } else {
       console.warn("not fetching undefined file");
     }

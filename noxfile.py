@@ -45,7 +45,7 @@ def cover(session):
         "report",
         "--show-missing",
         "--omit=gdbgui/SSLify.py",
-        "--fail-under=30",
+        "--fail-under=20",
     )
     session.run("coverage", "erase")
 
@@ -53,14 +53,12 @@ def cover(session):
 @nox.session(reuse_venv=True)
 def lint(session):
 
-    session.install(*lint_dependencies)
+    session.install(".", *lint_dependencies)
     session.run("black", "--check", *files_to_lint)
     session.run("flake8", *files_to_lint)
     session.run("mypy", *files_to_lint)
     session.run(
-        "check-manifest",
-        "--ignore",
-        "build.js,gdbgui/static/js,gdbgui/static/js/build.js.map",
+        "check-manifest", "--ignore", "gdbgui/static/js/*",
     )
     session.run("python", "setup.py", "check", "--metadata", "--strict")
     session.run(
@@ -113,7 +111,7 @@ def serve(session):
 @nox.session(reuse_venv=True)
 def build(session):
     session.install("setuptools", "wheel", "twine")
-    session.run("rm", "-rf", "dist", external=True)
+    session.run("rm", "-rf", "dist", "build", external=True)
     session.run("yarn", "build", external=True)
     session.run("python", "setup.py", "--quiet", "sdist", "bdist_wheel")
     session.run("twine", "check", "dist/*")

@@ -2,6 +2,10 @@ include README.md
 include LICENSE
 
 graft gdbgui
+# these files are built and must be included in distribution
+# but shouldn't be included in git repository since they
+# are generated
+graft gdbgui/static/js
 
 prune examples
 prune downloads

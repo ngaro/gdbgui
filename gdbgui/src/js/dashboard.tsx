@@ -1,5 +1,5 @@
 import ReactDOM from "react-dom";
-import React from "react";
+import React, { useState } from "react";
 import "../../static/css/tailwind.css";
 
 type GdbguiSession = {
@@ -8,14 +8,31 @@ type GdbguiSession = {
   command: string;
   client_ids: string[];
 };
+const copyIcon = (
+  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path
+      strokeLinejoin="round"
+      strokeWidth="2"
+      d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+    />
+  </svg>
+);
+
 // @ts-ignore
 const data: GdbguiSession[] = window.gdbgui_sessions;
 // @ts-ignore
 const csrf_token: string = window.csrf_token;
 // @ts-ignore
 const default_command: string = window.default_command;
-function GdbguiSession(props: { session: GdbguiSession }) {
+function GdbguiSession(props: { session: GdbguiSession; updateData: Function }) {
   const session = props.session;
+  const params = new URLSearchParams({
+    gdbpid: session.pid.toString()
+  }).toString();
+  const url = `${window.location.origin}/?${params}`;
+  const [shareButtonText, setShareButtonText] = useState(copyIcon);
+  const [clickedKill, setClickedKill] = useState(false);
+  let timeout: NodeJS.Timeout;
   return (
     <tr>
       <td className="border px-4 py-2">{session.command}</td>
@@ -23,36 +40,52 @@ function GdbguiSession(props: { session: GdbguiSession }) {
       <td className="border px-4 py-2">{session.client_ids.length}</td>
       <td className="border px-4 py-2">{session.start_time}</td>
       <td className="border px-4 py-2">
-        {" "}
-        <button
+        <a
+          href={url}
           className="leading-7 bg-blue-500 hover:bg-blue-700 border-blue-500 hover:border-blue-700 border-4 text-white py-2 px-2 rounded"
           type="button"
-          onClick={() => {
-            const params = new URLSearchParams({
-              gdbpid: session.pid.toString()
-            }).toString();
-            redirect(`/?${params}`);
-          }}
         >
           Connect to Session
+        </a>
+        <button
+          className="bg-blue-500 hover:bg-blue-700 border-blue-500 hover:border-blue-700 border-4 text-white m-1 p-2 rounded align-middle"
+          title="Copy Sharable URL"
+          type="button"
+          onClick={async () => {
+            await navigator.clipboard.writeText(url);
+            setShareButtonText(<span>Copied!</span>);
+            if (timeout) {
+              clearTimeout(timeout);
+            }
+            timeout = setTimeout(() => setShareButtonText(copyIcon), 3000);
+          }}
+        >
+          {shareButtonText}
         </button>
       </td>
       <td className="border px-4 py-2">
-        {" "}
         <button
           className="leading-7 bg-red-500 hover:bg-red-700 border-red-500 hover:border-red-700 border-4 text-white py-2 px-2 rounded"
           type="button"
           onClick={async () => {
-            await fetch("/kill_session", {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({ gdbpid: session.pid, csrf_token })
-            });
+            if (clickedKill) {
+              await fetch("/kill_session", {
+                method: "PUT",
+                headers: {
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ gdbpid: session.pid, csrf_token })
+              });
+              await props.updateData();
+            } else {
+              setClickedKill(true);
+              setTimeout(() => {
+                setClickedKill(false);
+              }, 5000);
+            }
           }}
         >
-          Kill Session
+          {clickedKill ? "Click Again to Confirm" : "Kill Session"}
         </button>
       </td>
     </tr>
@@ -118,7 +151,12 @@ function Nav() {
   return (
     <nav className="flex items-center justify-between flex-wrap bg-blue-500 p-6">
       <div className="flex items-center flex-shrink-0 text-white mr-6">
-        <span className="font-semibold text-xl tracking-tight">gdbgui</span>
+        <a
+          href={`${window.location.origin}/dashboard`}
+          className="font-semibold text-xl tracking-tight"
+        >
+          gdbgui
+        </a>
       </div>
 
       <div className="w-full block flex-grow lg:flex lg:items-center lg:w-auto">
@@ -175,12 +213,12 @@ class Dashboard extends React.PureComponent<any, { sessions: GdbguiSession[] }> 
   }
   render() {
     const sessions = this.state.sessions.map((d, index) => (
-      <GdbguiSession key={index} session={d} />
+      <GdbguiSession key={index} session={d} updateData={this.updateData} />
     ));
     return (
-      <>
+      <div className="w-full h-full min-h-screen flex flex-col">
         <Nav />
-        <div className="w-full h-full bg-gray-300 text-center p-5">
+        <div className="flex-grow w-full h-full bg-gray-300 text-center p-5">
           <div className="text-3xl font-semibold">Start new session</div>
           <StartCommand />
           <div className="mt-5 text-3xl font-semibold">
@@ -201,7 +239,12 @@ class Dashboard extends React.PureComponent<any, { sessions: GdbguiSession[] }> 
             <tbody>{sessions}</tbody>
           </table>
         </div>
-      </>
+        <footer className="h-40 bold text-lg bg-black text-gray-500 text-center flex flex-col justify-center">
+          <p>gdbgui</p>
+          <p>The browser-based frontend to gdb</p>
+          <a href="https://grassfedcode.com">Copyright Chad Smith</a>
+        </footer>
+      </div>
     );
   }
 }

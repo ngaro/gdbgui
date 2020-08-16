@@ -121,18 +121,19 @@ const GdbApi = {
       // on the server is already gone
       window.onbeforeunload = () => null;
 
-      // Actions.show_modal(
-      //   "",
-      //   <>
-      //     <p>
-      //       The connection to the gdb session has been closed. This tab will no longer
-      //       function as expected.
-      //     </p>
-      //     <p className="font-bold">
-      //       To start a new session, go to the <a href="/dashboard">dashboard</a>.
-      //     </p>
-      //   </>
-      // );
+      Actions.show_modal(
+        "",
+        <>
+          <p>
+            The connection to the gdb session has been closed. This tab will no longer
+            function as expected.
+          </p>
+          <p className="font-bold">
+            To start a new session or connect to a different session, go to the{" "}
+            <a href="/dashboard">dashboard</a>.
+          </p>
+        </>
+      );
       Actions.add_console_entries(
         `The connection to the gdb session has been closed. To start a new session, go to ${window.location.origin}/dashboard`,
         constants.console_entry_type.STD_ERR

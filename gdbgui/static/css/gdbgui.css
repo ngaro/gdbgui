@@ -388,8 +388,8 @@ td.line_num {
 }
 
 ul.varUL {
-  padding-left: 0;
-  padding-top: 0;
+  /* padding-top: 0; */
+  padding-left: 15px;
   border: 0;
   margin: 0;
 }

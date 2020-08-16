@@ -40,7 +40,7 @@ class ControlButtons extends React.Component {
         <button
           onClick={() => Actions.send_signal("SIGINT", this.state.gdb_pid)}
           type="button"
-          title="Send Interrupt signal (SIGINT) to gdb process to pause it and allow interaction with it"
+          title="Send Interrupt signal (SIGINT) to gdb process to pause it (if it's running)"
           className={btn_class}
         >
           <span className="glyphicon glyphicon-pause" />

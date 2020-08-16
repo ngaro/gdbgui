@@ -480,7 +480,6 @@ def read_and_forward_gdb_and_pty_output():
 
                 if response:
                     for client_id in client_ids:
-                        print("emitting to", client_id)
                         logger.info(
                             "emiting message to websocket client id " + client_id
                         )

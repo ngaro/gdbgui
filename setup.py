@@ -21,6 +21,7 @@ VERSION = (
     .read()
     .strip()
 )
+REQUIREMENTS = io.open(os.path.join(CURDIR, "requirements.txt"), "r", encoding="utf-8").readlines()
 
 setup(
     name="gdbgui",
@@ -58,18 +59,7 @@ setup(
         ]
     },
     zip_safe=False,
-    install_requires=[
-        "Flask>=0.12.2, <1.0",  # http server
-        "Flask-Compress>=1.4.0, <2.0",  # to compress flask responses
-        "Flask-SocketIO>=2.9, <3.0",  # websocket server
-        "gevent>=1.2.2, <2.0",  # websocket handling
-        "gevent-websocket>=0.10.1, <0.11",  # also websocket
-        "eventlet>=0.25.0, <0.26",  # also websocket
-        "pygdbmi>=0.10.0.0b0, <0.11",  # parse gdb output
-        "Pygments>=2.2.0, <3.0",  # syntax highlighting
-        "greenlet==0.4.16",
-        "python-socketio>=4.6.1, <5.0",  # pinned to use socketio 2 under the hood (issue #366)
-    ],
+    install_requires=REQUIREMENTS,
     classifiers=[
         "Intended Audience :: Developers",
         "Operating System :: MacOS",

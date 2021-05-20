@@ -1,5 +1,6 @@
 include README.md
 include LICENSE
+include requirements.txt
 
 graft gdbgui
 # these files are built and must be included in distribution
@@ -26,7 +27,6 @@ exclude jest.config.js
 exclude make_executable.py
 exclude mkdocs.yml
 exclude package.json
-exclude requirements.txt
 exclude tsconfig.json
 exclude tslint.json
 exclude webpack.config.js

@@ -1,5 +1,10 @@
 # gdbgui release history
 
+## 0.16.0.0
+
+- Fix css issues in frontend
+- [dev] Rewrite frontend, remove lots of tech debt
+
 ## 0.15.0.1
 
 This release has no changes to features or usability. The only change is to include a file used by other package maintainers.

@@ -13,7 +13,7 @@ RUN set -x && groupadd -g $GID $GROUPNAME && useradd -m -s $SHELL -u $UID -g $GI
 RUN set -x && ln -snf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
 RUN set -x && apt-get update && apt-get -y install pipx gdb python3-venv
 RUN set -x && apt-get -y install build-essential autoconf automake git cmake
-RUN set -x && apt-get -y install vim
+RUN set -x && apt-get -y install vim vim-scripts ctags universal-ctags
 WORKDIR $HOME
 USER $USERNAME
 RUN set -x && mkdir code

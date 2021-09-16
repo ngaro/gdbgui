@@ -1,0 +1,7 @@
+version: '3'
+services:
+        gdbgui:
+                image: gdbgui:full
+                restart: always
+                ports:
+                        - 5000:5000

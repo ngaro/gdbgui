@@ -12,8 +12,10 @@ ARG TIMEZONE=Europe/Brussels
 RUN set -x && groupadd -g $GID $GROUPNAME && useradd -m -s $SHELL -u $UID -g $GID -d $HOME $USERNAME
 RUN set -x && ln -snf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
 RUN set -x && apt-get update && apt-get -y install pipx gdb python3-venv
+RUN set -x && apt-get -y install build-essential autoconf automake git cmake
 WORKDIR $HOME
 USER $USERNAME
+RUN set -x && mkdir code
 RUN set -x && echo 'PATH="~/.local/bin:$PATH"' >> $SHELLRC && export PATH="$HOME/.local/bin:$PATH" && pipx install gdbgui
 
 CMD $HOME/.local/bin/gdbgui -r

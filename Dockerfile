@@ -15,3 +15,5 @@ RUN set -x && apt-get update && apt-get -y install pipx gdb python3-venv
 WORKDIR $HOME
 USER $USERNAME
 RUN set -x && echo 'PATH="~/.local/bin:$PATH"' >> $SHELLRC && export PATH="$HOME/.local/bin:$PATH" && pipx install gdbgui
+
+CMD $HOME/.local/bin/gdbgui -r
